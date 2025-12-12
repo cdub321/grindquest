@@ -13,6 +13,9 @@ import FutureFeaturesPanel from './components/FutureFeaturesPanel';
 import ModePanel from './components/ModePanel';
 import HardcoreLeaderboard from './components/HardcoreLeaderboard';
 import EquipmentPanel from './components/EquipmentPanel';
+import AuthPanel from './components/AuthPanel';
+import { supabase } from './lib/supabaseClient';
+import { signIn, signOut, signUp, onAuthStateChange, loadPlayerData, saveCharacter, saveInventory, saveEquipment, getSession } from './services/playerStorage';
 
 export default function GrindQuest() {
   const [playerClass] = useState(classesData.warrior);
@@ -31,6 +34,9 @@ export default function GrindQuest() {
   const [mode, setMode] = useState('normal');
   const [boundLevel, setBoundLevel] = useState(1);
   const [leaderboard, setLeaderboard] = useState([]);
+  const [user, setUser] = useState(null);
+  const [characterId, setCharacterId] = useState(null);
+  const [isProfileLoading, setIsProfileLoading] = useState(false);
 
   const zoneEntries = Object.entries(zonesData);
   const initialZoneId = zoneEntries[0]?.[0] || '';
@@ -62,6 +68,7 @@ export default function GrindQuest() {
   const isDeadRef = useRef(false);
   const fleeExhaustTimeout = useRef(null);
   const lastLogRef = useRef(null);
+  const saveTimeout = useRef(null);
 
   const xpNeeded = level * 100;
 
@@ -140,6 +147,27 @@ export default function GrindQuest() {
     return Array.from(options).filter(id => zonesData[id]);
   }, [currentZone, currentZoneId]);
 
+  const scheduleSave = (payload) => {
+    if (!user || !characterId) return;
+    if (saveTimeout.current) clearTimeout(saveTimeout.current);
+    saveTimeout.current = setTimeout(async () => {
+      try {
+        if (payload.character) {
+          await saveCharacter(characterId, payload.character);
+        }
+        if (payload.inventory) {
+          await saveInventory(characterId, payload.inventory);
+        }
+        if (payload.equipment) {
+          await saveEquipment(characterId, payload.equipment);
+        }
+      } catch (err) {
+        console.error('Save failed', err);
+        addLog('Save failed. Check connection.', 'error');
+      }
+    }, 500);
+  };
+
   const changeZone = (zoneId) => {
     if (!availableZoneIds.includes(zoneId)) {
       addLog('You cannot travel there directly from this zone.', 'error');
@@ -153,6 +181,14 @@ export default function GrindQuest() {
     setCurrentMob(null);
     setMobHp(0);
     setFleeExhausted(false);
+    scheduleSave({
+      character: {
+        level,
+        xp,
+        zone_id: zoneId,
+        currency: { copper, silver, gold, platinum }
+      }
+    });
 
     if (autoAttackInterval.current) clearInterval(autoAttackInterval.current);
     if (combatTimeout.current) clearTimeout(combatTimeout.current);
@@ -224,6 +260,16 @@ export default function GrindQuest() {
         back: null,
         trinket: null
       });
+      scheduleSave({
+        character: {
+          level: 1,
+          xp: 0,
+          zone_id: initialZoneId,
+          currency: { copper: 0, silver: 0, gold: 0, platinum: 0 }
+        },
+        inventory: [],
+        equipment: {}
+      });
       setBoundLevel(1);
       addLog('Hardcore death! Reset to level 1.', 'system');
       addLog('Your run was added to the leaderboard.', 'system');
@@ -233,6 +279,16 @@ export default function GrindQuest() {
       setHp(maxHp);
       setMana(maxMana);
       addLog(`You return to your bind at level ${boundLevel}.`, 'system');
+      scheduleSave({
+        character: {
+          level: boundLevel,
+          xp: 0,
+          zone_id: currentZoneId,
+          currency: { copper, silver, gold, platinum }
+        },
+        inventory,
+        equipment
+      });
     }
 
     setTimeout(() => {
@@ -267,6 +323,16 @@ export default function GrindQuest() {
         setLevel(level + 1);
         setXp(newXp - xpNeeded);
         addLog(`You have gained a level! You are now level ${level + 1}!`, 'levelup');
+        scheduleSave({
+          character: {
+            level: level + 1,
+            xp: newXp - xpNeeded,
+            zone_id: currentZoneId,
+            currency: { copper, silver, gold, platinum }
+          },
+          inventory,
+          equipment
+        });
       }
 
       if (Math.random() < 0.3) {
@@ -275,17 +341,37 @@ export default function GrindQuest() {
 
         if (lootItemName.includes("Pieces")) {
           if (lootItemName.includes("Platinum")) {
-            setPlatinum(prev => prev + Math.floor(Math.random() * 5) + 1);
+            setPlatinum(prev => {
+              const next = prev + Math.floor(Math.random() * 5) + 1;
+              scheduleSave({ character: { currency: { copper, silver, gold, platinum: next } } });
+              return next;
+            });
           } else if (lootItemName.includes("Gold")) {
-            setGold(prev => prev + Math.floor(Math.random() * 10) + 1);
+            setGold(prev => {
+              const next = prev + Math.floor(Math.random() * 10) + 1;
+              scheduleSave({ character: { currency: { copper, silver, gold: next, platinum } } });
+              return next;
+            });
           } else if (lootItemName.includes("Silver")) {
-            setSilver(prev => prev + Math.floor(Math.random() * 20) + 1);
+            setSilver(prev => {
+              const next = prev + Math.floor(Math.random() * 20) + 1;
+              scheduleSave({ character: { currency: { copper, silver: next, gold, platinum } } });
+              return next;
+            });
           } else if (lootItemName.includes("Copper")) {
-            setCopper(prev => prev + Math.floor(Math.random() * 50) + 1);
+            setCopper(prev => {
+              const next = prev + Math.floor(Math.random() * 50) + 1;
+              scheduleSave({ character: { currency: { copper: next, silver, gold, platinum } } });
+              return next;
+            });
           }
         } else {
           const item = createItemInstance(lootItemName);
-          setInventory(prev => [...prev, item]);
+          setInventory(prev => {
+            const updated = [...prev, item];
+            scheduleSave({ inventory: updated });
+            return updated;
+          });
         }
       }
 
@@ -369,12 +455,14 @@ export default function GrindQuest() {
       }
       const remaining = prev.filter(i => i.id !== itemId);
       let swapped = null;
-      setEquipment(prevEquip => {
+      const updatedEquip = setEquipment(prevEquip => {
         swapped = prevEquip[item.slot] || null;
         return { ...prevEquip, [item.slot]: item };
       });
+      const updatedInv = swapped ? [...remaining, swapped] : remaining;
+      scheduleSave({ equipment: { ...(updatedEquip || {}) }, inventory: updatedInv });
       addLog(`You equip ${item.name} (${item.slot}).`, 'system');
-      return swapped ? [...remaining, swapped] : remaining;
+      return updatedInv;
     });
   };
 
@@ -382,9 +470,14 @@ export default function GrindQuest() {
     setEquipment(prevEquip => {
       const item = prevEquip[slot];
       if (!item) return prevEquip;
-      setInventory(prev => [...prev, item]);
+      const updatedEquip = { ...prevEquip, [slot]: null };
+      setInventory(prev => {
+        const updatedInv = [...prev, item];
+        scheduleSave({ equipment: updatedEquip, inventory: updatedInv });
+        return updatedInv;
+      });
       addLog(`You unequip ${item.name}.`, 'system');
-      return { ...prevEquip, [slot]: null };
+      return updatedEquip;
     });
   };
 
@@ -442,8 +535,80 @@ export default function GrindQuest() {
     };
   }, [inCombat, isMeditating, maxHp, maxMana, playerClass.isCaster, fleeExhausted]);
 
+  useEffect(() => {
+    (async () => {
+      const { data } = await getSession();
+      setUser(data.session?.user || null);
+    })();
+    const { data: listener } = onAuthStateChange((_event, session) => {
+      setUser(session?.user || null);
+    });
+    return () => {
+      listener?.subscription?.unsubscribe();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!user) {
+      setCharacterId(null);
+      return;
+    }
+    const loadProfile = async () => {
+      setIsProfileLoading(true);
+      try {
+        const defaults = {
+          name: 'Hero',
+          class: 'warrior',
+          level: 1,
+          xp: 0,
+          zone_id: initialZoneId,
+          currency: { copper: 0, silver: 0, gold: 0, platinum: 0 }
+        };
+        const { character, inventory: inv, equipment: eq } = await loadPlayerData(user.id, defaults);
+        setCharacterId(character.id);
+        setLevel(character.level);
+        setXp(character.xp);
+        setCurrentZoneId(character.zone_id || initialZoneId);
+        setCopper(character.currency?.copper || 0);
+        setSilver(character.currency?.silver || 0);
+        setGold(character.currency?.gold || 0);
+        setPlatinum(character.currency?.platinum || 0);
+        setInventory(inv.map(i => ({ ...i, id: i.id || `${i.name}-${Math.random()}` })));
+        setEquipment(eq);
+        addLog('Profile loaded.', 'system');
+      } catch (err) {
+        console.error(err);
+        addLog('Failed to load profile.', 'error');
+      } finally {
+        setIsProfileLoading(false);
+      }
+    };
+    loadProfile();
+  }, [user, initialZoneId]);
+
   const displayMinDamage = Math.floor(playerClass.baseDamage * (1 + level * 0.1)) + totalBonuses.damage;
   const displayMaxDamage = displayMinDamage + 5;
+
+  const handleAuthSubmit = async ({ email, password, isLogin, onStatus }) => {
+    try {
+      onStatus('Working...');
+      const fn = isLogin ? signIn : signUp;
+      const { error } = await fn(email, password);
+      if (error) {
+        onStatus(error.message);
+      } else {
+        onStatus('Success! Check your email if using signup.');
+      }
+    } catch (err) {
+      onStatus(err.message);
+    }
+  };
+
+  const handleSignOut = async () => {
+    await signOut();
+    setUser(null);
+    window.location.reload();
+  };
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-slate-900 to-slate-800 text-gray-100 p-6">
@@ -453,7 +618,28 @@ export default function GrindQuest() {
           <p className="text-gray-400">An EverQuest Idle Adventure</p>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {!user && (
+          <AuthPanel onSignIn={handleAuthSubmit} />
+        )}
+
+        {user && (
+          <div className="flex justify-between items-center mb-6 text-sm text-gray-300">
+            <div>Logged in as {user.email}</div>
+            <button
+              onClick={handleSignOut}
+              className="bg-slate-700 hover:bg-slate-600 text-white px-3 py-1 rounded"
+            >
+              Sign Out
+            </button>
+          </div>
+        )}
+
+        {user && isProfileLoading && (
+          <div className="text-center text-gray-300">Loading your character...</div>
+        )}
+
+        {user && !isProfileLoading && (
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           <div className="space-y-6">
             <CharacterPanel
               playerClass={playerClass}
@@ -520,6 +706,7 @@ export default function GrindQuest() {
             <FutureFeaturesPanel />
           </div>
         </div>
+        )}
       </div>
     </div>
   );
