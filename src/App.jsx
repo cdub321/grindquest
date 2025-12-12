@@ -55,6 +55,7 @@ export default function GrindQuest() {
   const [isProfileLoading, setIsProfileLoading] = useState(false);
   const [isSelectingCharacter, setIsSelectingCharacter] = useState(false);
   const [isCreatingCharacter, setIsCreatingCharacter] = useState(false);
+  const [loadError, setLoadError] = useState('');
 
   const zoneEntries = Object.entries(zonesData);
   const initialZoneId = zoneEntries[0]?.[0] || '';
@@ -580,6 +581,7 @@ export default function GrindQuest() {
       setCharacters([]);
       setIsSelectingCharacter(false);
       setIsCreatingCharacter(false);
+      setLoadError('');
       return;
     }
 
@@ -599,9 +601,11 @@ export default function GrindQuest() {
           setIsSelectingCharacter(true);
           setIsCreatingCharacter(false);
         }
+        setLoadError('');
       } catch (err) {
         console.error(err);
         addLog('Failed to load characters.', 'error');
+        setLoadError('Failed to load characters.');
       } finally {
         setIsProfileLoading(false);
       }
@@ -635,10 +639,14 @@ export default function GrindQuest() {
         setMana(loadedClass.baseMana);
         setIsSelectingCharacter(false);
         setIsCreatingCharacter(false);
+        setLoadError('');
         addLog('Profile loaded.', 'system');
       } catch (err) {
         console.error(err);
         addLog('Failed to load profile.', 'error');
+        setLoadError('Failed to load profile. Please re-select a character.');
+        setIsSelectingCharacter(true);
+        setCharacterId(null);
       } finally {
         setIsProfileLoading(false);
       }
@@ -738,6 +746,10 @@ export default function GrindQuest() {
 
         {user && isProfileLoading && (
           <div className="text-center text-gray-300">Loading your character...</div>
+        )}
+
+        {loadError && (
+          <div className="text-center text-red-300 mb-4 text-sm">{loadError}</div>
         )}
 
         {user && !isProfileLoading && isSelectingCharacter && (
