@@ -1,0 +1,10 @@
+{
+  "crushbone": {
+    "name": "Crushbone",
+    "mobs": [
+      { "name": "Orc Pawn", "hp": 50, "damage": 3, "xp": 10, "loot": ["Rusty Axe", "Belt", "Copper Pieces"] },
+      { "name": "Orc Centurion", "hp": 120, "damage": 8, "xp": 30, "loot": ["Fine Steel Sword", "Orc Belt", "Silver Pieces", "Gold Pieces"] },
+      { "name": "Ambassador Dvinn", "hp": 500, "damage": 15, "xp": 150, "loot": ["Dwarven Ringmail Tunic", "Ambassador's Boots", "Gold Pieces", "Platinum Pieces"], "isNamed": true }
+    ]
+  }
+}
