@@ -1,0 +1,2 @@
+# grindquest
+Browser Idle EQ
