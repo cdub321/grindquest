@@ -20,46 +20,61 @@ export function onAuthStateChange(callback) {
   return supabase.auth.onAuthStateChange(callback);
 }
 
-export async function loadPlayerData(userId, defaults) {
-  const { data: characterRows, error: charErr } = await supabase
+export async function fetchCharacters(userId) {
+  const { data, error } = await supabase
+    .from('characters')
+    .select('id, name, class, level, xp, zone_id, currency, created_at')
+    .eq('user_id', userId)
+    .order('created_at', { ascending: true });
+  if (error) throw error;
+  return data || [];
+}
+
+export async function createCharacter(userId, payload) {
+  const { data, error } = await supabase
+    .from('characters')
+    .insert({
+      user_id: userId,
+      name: payload.name,
+      class: payload.class,
+      level: 1,
+      xp: 0,
+      zone_id: payload.zone_id,
+      currency: payload.currency
+    })
+    .select('*')
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+export async function deleteCharacter(userId, characterId) {
+  const { error } = await supabase
+    .from('characters')
+    .delete()
+    .eq('id', characterId)
+    .eq('user_id', userId);
+  if (error) throw error;
+}
+
+export async function loadCharacter(characterId) {
+  const { data: character, error: charErr } = await supabase
     .from('characters')
     .select('*')
-    .eq('user_id', userId)
-    .limit(1);
-
+    .eq('id', characterId)
+    .single();
   if (charErr) throw charErr;
-
-  let character = characterRows?.[0];
-
-  if (!character) {
-    const insertPayload = {
-      user_id: userId,
-      name: defaults.name,
-      class: defaults.class,
-      level: defaults.level,
-      xp: defaults.xp,
-      zone_id: defaults.zone_id,
-      currency: defaults.currency
-    };
-    const { data: inserted, error: insertErr } = await supabase
-      .from('characters')
-      .insert(insertPayload)
-      .select('*')
-      .single();
-    if (insertErr) throw insertErr;
-    character = inserted;
-  }
 
   const { data: inventoryRows, error: invErr } = await supabase
     .from('inventory_items')
     .select('*')
-    .eq('character_id', character.id);
+    .eq('character_id', characterId);
   if (invErr) throw invErr;
 
   const { data: equipRows, error: eqErr } = await supabase
     .from('equipment_slots')
     .select('*')
-    .eq('character_id', character.id);
+    .eq('character_id', characterId);
   if (eqErr) throw eqErr;
 
   const inventory = (inventoryRows || []).map((row) => ({

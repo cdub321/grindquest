@@ -15,10 +15,26 @@ import HardcoreLeaderboard from './components/HardcoreLeaderboard';
 import EquipmentPanel from './components/EquipmentPanel';
 import AuthPanel from './components/AuthPanel';
 import { supabase } from './lib/supabaseClient';
-import { signIn, signOut, signUp, onAuthStateChange, loadPlayerData, saveCharacter, saveInventory, saveEquipment, getSession } from './services/playerStorage';
+import {
+  signIn,
+  signOut,
+  signUp,
+  onAuthStateChange,
+  saveCharacter,
+  saveInventory,
+  saveEquipment,
+  getSession,
+  fetchCharacters,
+  createCharacter,
+  deleteCharacter,
+  loadCharacter
+} from './services/playerStorage';
+import CharacterSelectPanel from './components/CharacterSelectPanel';
+import CharacterCreatePanel from './components/CharacterCreatePanel';
 
 export default function GrindQuest() {
-  const [playerClass] = useState(classesData.warrior);
+  const [playerClassKey, setPlayerClassKey] = useState('warrior');
+  const playerClass = classesData[playerClassKey] || classesData.warrior;
   const [level, setLevel] = useState(1);
   const [xp, setXp] = useState(0);
   const baseMaxHp = playerClass.baseHp;
@@ -36,7 +52,10 @@ export default function GrindQuest() {
   const [leaderboard, setLeaderboard] = useState([]);
   const [user, setUser] = useState(null);
   const [characterId, setCharacterId] = useState(null);
+  const [characters, setCharacters] = useState([]);
   const [isProfileLoading, setIsProfileLoading] = useState(false);
+  const [isSelectingCharacter, setIsSelectingCharacter] = useState(false);
+  const [isCreatingCharacter, setIsCreatingCharacter] = useState(false);
 
   const zoneEntries = Object.entries(zonesData);
   const initialZoneId = zoneEntries[0]?.[0] || '';
@@ -318,6 +337,16 @@ export default function GrindQuest() {
       const newXp = xp + xpGain;
       setXp(newXp);
       addLog(`You gain ${xpGain} experience!`, 'xp');
+      scheduleSave({
+        character: {
+          level,
+          xp: newXp,
+          zone_id: currentZoneId,
+          currency: { copper, silver, gold, platinum }
+        },
+        inventory,
+        equipment
+      });
 
       if (newXp >= xpNeeded) {
         setLevel(level + 1);
@@ -454,13 +483,11 @@ export default function GrindQuest() {
         return prev;
       }
       const remaining = prev.filter(i => i.id !== itemId);
-      let swapped = null;
-      const updatedEquip = setEquipment(prevEquip => {
-        swapped = prevEquip[item.slot] || null;
-        return { ...prevEquip, [item.slot]: item };
-      });
+      const updatedEquip = { ...equipment, [item.slot]: item };
+      const swapped = equipment[item.slot] || null;
       const updatedInv = swapped ? [...remaining, swapped] : remaining;
-      scheduleSave({ equipment: { ...(updatedEquip || {}) }, inventory: updatedInv });
+      setEquipment(updatedEquip);
+      scheduleSave({ equipment: updatedEquip, inventory: updatedInv });
       addLog(`You equip ${item.name} (${item.slot}).`, 'system');
       return updatedInv;
     });
@@ -551,21 +578,48 @@ export default function GrindQuest() {
   useEffect(() => {
     if (!user) {
       setCharacterId(null);
+      setCharacters([]);
+      setIsSelectingCharacter(false);
+      setIsCreatingCharacter(false);
       return;
     }
+
+    const loadCharacters = async () => {
+      setIsProfileLoading(true);
+      try {
+        const list = await fetchCharacters(user.id);
+        setCharacters(list);
+        if (list.length === 1) {
+          setCharacterId(list[0].id);
+          setIsSelectingCharacter(false);
+          setIsCreatingCharacter(false);
+        } else if (list.length === 0) {
+          setIsSelectingCharacter(false);
+          setIsCreatingCharacter(true);
+        } else {
+          setIsSelectingCharacter(true);
+          setIsCreatingCharacter(false);
+        }
+      } catch (err) {
+        console.error(err);
+        addLog('Failed to load characters.', 'error');
+      } finally {
+        setIsProfileLoading(false);
+      }
+    };
+
+    loadCharacters();
+  }, [user]);
+
+  useEffect(() => {
+    if (!characterId || !user) return;
     const loadProfile = async () => {
       setIsProfileLoading(true);
       try {
-        const defaults = {
-          name: 'Hero',
-          class: 'warrior',
-          level: 1,
-          xp: 0,
-          zone_id: initialZoneId,
-          currency: { copper: 0, silver: 0, gold: 0, platinum: 0 }
-        };
-        const { character, inventory: inv, equipment: eq } = await loadPlayerData(user.id, defaults);
-        setCharacterId(character.id);
+        const { character, inventory: inv, equipment: eq } = await loadCharacter(characterId);
+        const classKey = character.class || 'warrior';
+        const loadedClass = classesData[classKey] || classesData.warrior;
+        setPlayerClassKey(classKey);
         setLevel(character.level);
         setXp(character.xp);
         setCurrentZoneId(character.zone_id || initialZoneId);
@@ -575,6 +629,12 @@ export default function GrindQuest() {
         setPlatinum(character.currency?.platinum || 0);
         setInventory(inv.map(i => ({ ...i, id: i.id || `${i.name}-${Math.random()}` })));
         setEquipment(eq);
+        setMaxHp(loadedClass.baseHp);
+        setHp(loadedClass.baseHp);
+        setMaxMana(loadedClass.baseMana);
+        setMana(loadedClass.baseMana);
+        setIsSelectingCharacter(false);
+        setIsCreatingCharacter(false);
         addLog('Profile loaded.', 'system');
       } catch (err) {
         console.error(err);
@@ -584,7 +644,7 @@ export default function GrindQuest() {
       }
     };
     loadProfile();
-  }, [user, initialZoneId]);
+  }, [characterId, user, initialZoneId]);
 
   const displayMinDamage = Math.floor(playerClass.baseDamage * (1 + level * 0.1)) + totalBonuses.damage;
   const displayMaxDamage = displayMinDamage + 5;
@@ -608,6 +668,47 @@ export default function GrindQuest() {
     await signOut();
     setUser(null);
     window.location.reload();
+  };
+
+  const handleSelectCharacter = (id) => {
+    setCharacterId(id);
+  };
+
+  const handleDeleteCharacter = async (id) => {
+    try {
+      await deleteCharacter(user.id, id);
+      const updated = characters.filter(c => c.id !== id);
+      setCharacters(updated);
+      if (characterId === id) {
+        setCharacterId(null);
+        setIsSelectingCharacter(true);
+      }
+    } catch (err) {
+      console.error(err);
+      addLog('Failed to delete character.', 'error');
+    }
+  };
+
+  const handleCreateCharacter = async ({ name, classKey }) => {
+    if (!user) return;
+    if (characters.length >= 6) {
+      addLog('All 6 character slots are used.', 'error');
+      return;
+    }
+    try {
+      const newChar = await createCharacter(user.id, {
+        name,
+        class: classKey,
+        zone_id: initialZoneId,
+        currency: { copper: 0, silver: 0, gold: 0, platinum: 0 }
+      });
+      const updated = [...characters, newChar];
+      setCharacters(updated);
+      setCharacterId(newChar.id);
+    } catch (err) {
+      console.error(err);
+      addLog('Failed to create character.', 'error');
+    }
   };
 
   return (
@@ -638,7 +739,30 @@ export default function GrindQuest() {
           <div className="text-center text-gray-300">Loading your character...</div>
         )}
 
-        {user && !isProfileLoading && (
+        {user && !isProfileLoading && isSelectingCharacter && (
+          <CharacterSelectPanel
+            characters={characters}
+            onSelect={handleSelectCharacter}
+            onCreateClick={() => setIsCreatingCharacter(true)}
+            onDelete={handleDeleteCharacter}
+          />
+        )}
+
+        {user && !isProfileLoading && isCreatingCharacter && (
+          <div className="space-y-4">
+            <CharacterCreatePanel classesData={classesData} onCreate={handleCreateCharacter} />
+            <div className="text-center">
+              <button
+                onClick={() => setIsCreatingCharacter(false)}
+                className="bg-slate-700 hover:bg-slate-600 text-white px-4 py-2 rounded"
+              >
+                Back to selection
+              </button>
+            </div>
+          </div>
+        )}
+
+        {user && !isProfileLoading && characterId && !isSelectingCharacter && !isCreatingCharacter && (
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           <div className="space-y-6">
             <CharacterPanel
