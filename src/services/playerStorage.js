@@ -23,7 +23,7 @@ export function onAuthStateChange(callback) {
 export async function fetchCharacters(userId) {
   const { data, error } = await supabase
     .from('characters')
-    .select('id, name, class, level, xp, zone_id, currency, created_at')
+    .select('id, name, class, level, xp, zone_id, currency, created_at, mode')
     .eq('user_id', userId)
     .order('created_at', { ascending: true });
   if (error) throw error;
@@ -40,7 +40,8 @@ export async function createCharacter(userId, payload) {
       level: 1,
       xp: 0,
       zone_id: payload.zone_id,
-      currency: payload.currency
+      currency: payload.currency,
+      mode: payload.mode || 'normal'
     })
     .select('*')
     .single();

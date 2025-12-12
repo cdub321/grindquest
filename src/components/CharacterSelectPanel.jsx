@@ -25,7 +25,7 @@ export default function CharacterSelectPanel({
               <div>
                 <div className="text-white font-semibold">{c.name}</div>
                 <div className="text-sm text-gray-300 capitalize">
-                  {c.class} — Level {c.level}
+                  {c.class} — Level {c.level} — {c.mode || 'normal'}
                 </div>
                 <div className="text-xs text-gray-400">Zone: {c.zone_id}</div>
               </div>

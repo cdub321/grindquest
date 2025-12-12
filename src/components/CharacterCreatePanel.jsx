@@ -37,6 +37,16 @@ export default function CharacterCreatePanel({ classesData, onCreate }) {
             ))}
           </select>
         </div>
+        <div>
+          <label className="block text-sm text-gray-300 mb-1">Mode</label>
+          <select
+            name="mode"
+            className="w-full bg-slate-700 border border-blue-900 rounded px-3 py-2 text-white capitalize"
+          >
+            <option value="normal">Normal</option>
+            <option value="hardcore">Hardcore (death resets run)</option>
+          </select>
+        </div>
         <button
           type="submit"
           className="bg-green-600 hover:bg-green-700 text-white font-semibold px-4 py-2 rounded"

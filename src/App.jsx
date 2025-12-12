@@ -10,7 +10,6 @@ import CombatLog from './components/CombatLog';
 import InstructionsPanel from './components/InstructionsPanel';
 import StatsPanel from './components/StatsPanel';
 import FutureFeaturesPanel from './components/FutureFeaturesPanel';
-import ModePanel from './components/ModePanel';
 import HardcoreLeaderboard from './components/HardcoreLeaderboard';
 import EquipmentPanel from './components/EquipmentPanel';
 import AuthPanel from './components/AuthPanel';
@@ -620,6 +619,7 @@ export default function GrindQuest() {
         const classKey = character.class || 'warrior';
         const loadedClass = classesData[classKey] || classesData.warrior;
         setPlayerClassKey(classKey);
+        setMode(character.mode || 'normal');
         setLevel(character.level);
         setXp(character.xp);
         setCurrentZoneId(character.zone_id || initialZoneId);
@@ -700,7 +700,8 @@ export default function GrindQuest() {
         name,
         class: classKey,
         zone_id: initialZoneId,
-        currency: { copper: 0, silver: 0, gold: 0, platinum: 0 }
+        currency: { copper: 0, silver: 0, gold: 0, platinum: 0 },
+        mode
       });
       const updated = [...characters, newChar];
       setCharacters(updated);
