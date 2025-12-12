@@ -6,8 +6,8 @@ const ZONES = {
     name: "Crushbone",
     mobs: [
       { name: "Orc Pawn", hp: 50, damage: 3, xp: 10, loot: ["Rusty Axe", "Belt", "Copper Pieces"] },
-      { name: "Orc Centurion", hp: 120, damage: 8, xp: 30, loot: ["Fine Steel Sword", "Orc Belt", "Silver Pieces"] },
-      { name: "Ambassador Dvinn", hp: 500, damage: 15, xp: 150, loot: ["Dwarven Ringmail Tunic", "Ambassador's Boots", "Gold Pieces"], isNamed: true }
+      { name: "Orc Centurion", hp: 120, damage: 8, xp: 30, loot: ["Fine Steel Sword", "Orc Belt", "Silver Pieces", "Gold Pieces"] },
+      { name: "Ambassador Dvinn", hp: 500, damage: 15, xp: 150, loot: ["Dwarven Ringmail Tunic", "Ambassador's Boots", "Gold Pieces", "Platinum Pieces"], isNamed: true }
     ]
   }
 };
@@ -27,7 +27,10 @@ export default function GrindQuest() {
   const [maxHp] = useState(playerClass.baseHp);
   const [mana, setMana] = useState(playerClass.baseMana);
   const [maxMana] = useState(playerClass.baseMana);
+  const [copper, setCopper] = useState(0);
+  const [silver, setSilver] = useState(0);
   const [gold, setGold] = useState(0);
+  const [platinum, setPlatinum] = useState(0);
   
   // Combat state
   const [currentZone] = useState(ZONES.crushbone);
@@ -101,8 +104,15 @@ export default function GrindQuest() {
         addLog(`You receive: ${lootItem}`, 'loot');
         
         if (lootItem.includes("Pieces")) {
-          const goldGain = lootItem.includes("Gold") ? 10 : lootItem.includes("Silver") ? 5 : 1;
-          setGold(prev => prev + goldGain);
+          if (lootItem.includes("Platinum")) {
+            setPlatinum(prev => prev + Math.floor(Math.random() * 5) + 1);
+          } else if (lootItem.includes("Gold")) {
+            setGold(prev => prev + Math.floor(Math.random() * 10) + 1);
+          } else if (lootItem.includes("Silver")) {
+            setSilver(prev => prev + Math.floor(Math.random() * 20) + 1);
+          } else if (lootItem.includes("Copper")) {
+            setCopper(prev => prev + Math.floor(Math.random() * 50) + 1);
+          }
         }
       }
       
@@ -269,9 +279,23 @@ export default function GrindQuest() {
                   </div>
                 </div>
                 
-                <div className="flex justify-between pt-2 border-t border-gray-700">
-                  <span className="text-yellow-400">Gold:</span>
-                  <span className="text-yellow-300 font-semibold">{gold}</span>
+                <div className="pt-2 border-t border-gray-700 space-y-1">
+                  <div className="flex justify-between">
+                    <span className="text-gray-400">Platinum:</span>
+                    <span className="text-gray-200 font-semibold">{platinum}pp</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-yellow-400">Gold:</span>
+                    <span className="text-yellow-300 font-semibold">{gold}gp</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-300">Silver:</span>
+                    <span className="text-gray-100 font-semibold">{silver}sp</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-orange-400">Copper:</span>
+                    <span className="text-orange-300 font-semibold">{copper}cp</span>
+                  </div>
                 </div>
               </div>
             </div>
