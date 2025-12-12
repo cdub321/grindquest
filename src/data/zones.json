@@ -1,10 +1,106 @@
 {
-  "crushbone": {
-    "name": "Crushbone",
+  "faydark": {
+    "name": "Greater Faydark",
+    "levelRange": "1-5",
+    "connections": ["crushbone", "butcherblock", "steamfont", "blackburrow"],
     "mobs": [
-      { "name": "Orc Pawn", "hp": 50, "damage": 3, "xp": 10, "loot": ["Rusty Axe", "Belt", "Copper Pieces"] },
-      { "name": "Orc Centurion", "hp": 120, "damage": 8, "xp": 30, "loot": ["Fine Steel Sword", "Orc Belt", "Silver Pieces", "Gold Pieces"] },
-      { "name": "Ambassador Dvinn", "hp": 500, "damage": 15, "xp": 150, "loot": ["Dwarven Ringmail Tunic", "Ambassador's Boots", "Gold Pieces", "Platinum Pieces"], "isNamed": true }
+      { "name": "A bat", "hp": 15, "damage": 1, "xp": 5, "loot": ["Bat Wing", "Bat Fur"] },
+      { "name": "A decaying skeleton", "hp": 25, "damage": 2, "xp": 8, "loot": ["Bone Chips", "Rusty Dagger", "Cloth Cap"] },
+      { "name": "A faerie guard", "hp": 40, "damage": 4, "xp": 12, "loot": ["Faerie Wing", "Emerald", "Silver Pieces"] },
+      { "name": "Faydedar", "hp": 50000, "damage": 500, "xp": 10000, "loot": ["Dragon Scales", "Worn Cinched Belt"], "isNamed": true, "note": "Rare Raid Boss" }
+    ]
+  },
+  "crushbone": {
+    "name": "Clan Crushbone",
+    "levelRange": "5-15",
+    "connections": ["faydark", "butcherblock"],
+    "mobs": [
+      { "name": "Orc Pawn", "hp": 50, "damage": 3, "xp": 10, "loot": ["Rusty Axe", "Cloth Sandals", "Copper Pieces"] },
+      { "name": "Orc Centurion", "hp": 120, "damage": 8, "xp": 30, "loot": ["Crushbone Belt", "Raw-hide Tunic", "Silver Pieces"] },
+      { "name": "Orc Legionnaire", "hp": 200, "damage": 12, "xp": 50, "loot": ["Crushbone Shoulderpads", "Ringmail Coif", "Gold Pieces"] },
+      { "name": "Ambassador Dvinn", "hp": 650, "damage": 25, "xp": 200, "loot": ["Dragoon Dirk", "Black Iron Medallion", "Platinum Pieces"], "isNamed": true },
+      { "name": "Emperor Crush", "hp": 800, "damage": 30, "xp": 350, "loot": ["Dwarven Ringmail Tunic", "Dwarven Axe"], "isNamed": true }
+    ]
+  },
+  "butcherblock": {
+    "name": "Butcherblock Mountains",
+    "levelRange": "5-15",
+    "connections": ["faydark", "crushbone", "steamfont", "unrest"],
+    "mobs": [
+      { "name": "A goblin whelp", "hp": 45, "damage": 3, "xp": 9, "loot": ["Small Brick of Ore", "Copper Pieces"] },
+      { "name": "A krag chick", "hp": 80, "damage": 6, "xp": 20, "loot": ["Aviak Feather", "Snake Scales"] },
+      { "name": "Corflunk", "hp": 400, "damage": 18, "xp": 100, "loot": ["Ogre Head", "Large Raw-hide Belt"], "isNamed": true }
+    ]
+  },
+  "steamfont": {
+    "name": "Steamfont Mountains",
+    "levelRange": "5-20",
+    "connections": ["faydark", "butcherblock", "blackburrow"],
+    "mobs": [
+      { "name": "A clockwork spider", "hp": 100, "damage": 8, "xp": 25, "loot": ["Spider Silk", "Scrap Metal"] },
+      { "name": "A minotaur slaver", "hp": 300, "damage": 15, "xp": 75, "loot": ["Minotaur Horn", "Minotaur Axe"] },
+      { "name": "Meldrath the Malignant", "hp": 900, "damage": 35, "xp": 400, "loot": ["Gnome Skin Sleeves", "Staff of the Observers"], "isNamed": true }
+    ]
+  },
+  "blackburrow": {
+    "name": "Blackburrow",
+    "levelRange": "5-15",
+    "connections": ["faydark", "steamfont"],
+    "mobs": [
+      { "name": "A gnoll pup", "hp": 40, "damage": 3, "xp": 10, "loot": ["Ruined Wolf Pelt", "Rusty Mace"] },
+      { "name": "A gnoll guardsman", "hp": 150, "damage": 10, "xp": 35, "loot": ["Gnoll Scalp", "Blackburrow Stout"] },
+      { "name": "Lord Elgnop", "hp": 500, "damage": 20, "xp": 180, "loot": ["Gnoll Hide Tome", "Spiked Collar"], "isNamed": true }
+    ]
+  },
+  "unrest": {
+    "name": "Estate of Unrest",
+    "levelRange": "15-30",
+    "connections": ["butcherblock", "mistmoore"],
+    "mobs": [
+      { "name": "A tormenting dead", "hp": 250, "damage": 18, "xp": 60, "loot": ["Bone Chips", "Bloodstained Tunic"] },
+      { "name": "A festering hag", "hp": 450, "damage": 30, "xp": 120, "loot": ["Hag Essence", "Dagger of Dropping"] },
+      { "name": "The Ghoul Lord", "hp": 1200, "damage": 65, "xp": 600, "loot": ["Opalline Earring", "Dwarven Ringmail Tunic", "Thick Leather Apron"], "isNamed": true }
+    ]
+  },
+  "mistmoore": {
+    "name": "Castle Mistmoore",
+    "levelRange": "20-40",
+    "connections": ["unrest", "lowerguk"],
+    "mobs": [
+      { "name": "A mistmoore guard", "hp": 600, "damage": 40, "xp": 150, "loot": ["Gargoyle Eye", "Fine Steel Longsword"] },
+      { "name": "A dark offerer", "hp": 500, "damage": 55, "xp": 140, "loot": ["Velvet Robe", "Bloodstone"] },
+      { "name": "Xicotl", "hp": 2500, "damage": 110, "xp": 1200, "loot": ["Glowing Black Stone", "Robe of the Oracle"], "isNamed": true },
+      { "name": "Mayong Mistmoore", "hp": 10000, "damage": 400, "xp": 5000, "loot": ["Nightshade Wreath", "Cloak of the Vampire"], "isNamed": true }
+    ]
+  },
+  "lowerguk": {
+    "name": "Ruins of Old Guk (Lower)",
+    "levelRange": "30-50",
+    "connections": ["mistmoore", "solb"],
+    "mobs": [
+      { "name": "A wan knight", "hp": 900, "damage": 50, "xp": 220, "loot": ["Frog Leg", "Rusty Two Handed Sword"] },
+      { "name": "A frenzied ghoul", "hp": 1500, "damage": 80, "xp": 450, "loot": ["Flowing Black Silk Sash", "Moonstone Ring"], "isNamed": true },
+      { "name": "The Ghoul Lord", "hp": 3000, "damage": 150, "xp": 1500, "loot": ["Short Sword of the Ykesha", "Skull-shaped Barbute"], "isNamed": true }
+    ]
+  },
+  "solb": {
+    "name": "Nagafen's Lair",
+    "levelRange": "45-50",
+    "connections": ["lowerguk", "fear"],
+    "mobs": [
+      { "name": "Fire Giant", "hp": 4000, "damage": 180, "xp": 800, "loot": ["Lambent Stone", "Hill Giant Toes"] },
+      { "name": "Efreeti Lord Djarn", "hp": 3500, "damage": 160, "xp": 1200, "loot": ["Golden Efreeti Boots", "Djarns Amethyst Ring"], "isNamed": true },
+      { "name": "Lord Nagafen", "hp": 32000, "damage": 600, "xp": 15000, "loot": ["Cloak of Flames", "Red Dragon Scale", "Gauntlets of Fiery Might"], "isNamed": true }
+    ]
+  },
+  "fear": {
+    "name": "Plane of Fear",
+    "levelRange": "50+",
+    "connections": ["solb"],
+    "mobs": [
+      { "name": "A scareling", "hp": 2500, "damage": 120, "xp": 500, "loot": ["Ethereal Bladed Naginata", "Fear Touched Boots"] },
+      { "name": "A spinechiller spider", "hp": 3000, "damage": 140, "xp": 650, "loot": ["Spider Legs", "Carmine Robe"] },
+      { "name": "Cazic Thule", "hp": 100000, "damage": 2000, "xp": 50000, "loot": ["Cloak of the Fearsome", "Halo of the Enlightened", "Bile Etched Robes"], "isNamed": true }
     ]
   }
 }

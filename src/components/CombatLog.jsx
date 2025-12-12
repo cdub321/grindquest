@@ -1,8 +1,18 @@
+import { useEffect, useRef } from 'react';
+
 export default function CombatLog({ combatLog }) {
+  const logRef = useRef(null);
+
+  useEffect(() => {
+    if (logRef.current) {
+      logRef.current.scrollTop = logRef.current.scrollHeight;
+    }
+  }, [combatLog]);
+
   return (
     <div className="bg-slate-800 border-2 border-blue-900 rounded-lg p-4">
       <h2 className="text-xl font-bold text-blue-300 mb-3">Combat Log</h2>
-      <div className="space-y-1 h-40 overflow-y-auto font-mono text-sm">
+      <div ref={logRef} className="space-y-1 h-40 overflow-y-auto font-mono text-sm">
         {combatLog.map((log) => (
           <div
             key={log.id}

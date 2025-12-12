@@ -1,6 +1,7 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import classesData from './data/classes.json';
 import zonesData from './data/zones.json';
+import itemsData from './data/items.json';
 import CharacterPanel from './components/CharacterPanel';
 import InventoryPanel from './components/InventoryPanel';
 import ZonePanel from './components/ZonePanel';
@@ -9,44 +10,235 @@ import CombatLog from './components/CombatLog';
 import InstructionsPanel from './components/InstructionsPanel';
 import StatsPanel from './components/StatsPanel';
 import FutureFeaturesPanel from './components/FutureFeaturesPanel';
+import ModePanel from './components/ModePanel';
+import HardcoreLeaderboard from './components/HardcoreLeaderboard';
+import EquipmentPanel from './components/EquipmentPanel';
 
 export default function GrindQuest() {
   const [playerClass] = useState(classesData.warrior);
   const [level, setLevel] = useState(1);
   const [xp, setXp] = useState(0);
-  const [hp, setHp] = useState(playerClass.baseHp);
-  const [maxHp] = useState(playerClass.baseHp);
-  const [mana, setMana] = useState(playerClass.baseMana);
-  const [maxMana] = useState(playerClass.baseMana);
+  const baseMaxHp = playerClass.baseHp;
+  const baseMaxMana = playerClass.baseMana;
+  const [hp, setHp] = useState(baseMaxHp);
+  const [maxHp, setMaxHp] = useState(baseMaxHp);
+  const [mana, setMana] = useState(baseMaxMana);
+  const [maxMana, setMaxMana] = useState(baseMaxMana);
   const [copper, setCopper] = useState(0);
   const [silver, setSilver] = useState(0);
   const [gold, setGold] = useState(0);
   const [platinum, setPlatinum] = useState(0);
+  const [mode, setMode] = useState('normal');
+  const [boundLevel, setBoundLevel] = useState(1);
+  const [leaderboard, setLeaderboard] = useState([]);
 
-  const [currentZone] = useState(zonesData.crushbone);
+  const zoneEntries = Object.entries(zonesData);
+  const initialZoneId = zoneEntries[0]?.[0] || '';
+  const [currentZoneId, setCurrentZoneId] = useState(initialZoneId);
+  const currentZone = zonesData[currentZoneId] || { name: 'Unknown', mobs: [] };
+  const equipSlots = ['weapon', 'chest', 'feet', 'waist', 'jewelry', 'hands', 'back', 'trinket'];
   const [currentMob, setCurrentMob] = useState(null);
   const [mobHp, setMobHp] = useState(0);
   const [isAutoAttack, setIsAutoAttack] = useState(false);
   const [combatLog, setCombatLog] = useState([]);
   const [inventory, setInventory] = useState([]);
+  const [equipment, setEquipment] = useState({
+    weapon: null,
+    chest: null,
+    feet: null,
+    waist: null,
+    jewelry: null,
+    hands: null,
+    back: null,
+    trinket: null
+  });
   const [inCombat, setInCombat] = useState(false);
   const [isMeditating, setIsMeditating] = useState(false);
+  const [fleeExhausted, setFleeExhausted] = useState(false);
 
   const autoAttackInterval = useRef(null);
   const regenInterval = useRef(null);
   const combatTimeout = useRef(null);
+  const isDeadRef = useRef(false);
+  const fleeExhaustTimeout = useRef(null);
+  const lastLogRef = useRef(null);
 
   const xpNeeded = level * 100;
 
+  const createItemInstance = (name) => {
+    const data = itemsData[name] || { slot: 'misc', bonuses: {} };
+    return {
+      id: `${name}-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+      name,
+      slot: data.slot || 'misc',
+      bonuses: data.bonuses || {}
+    };
+  };
+
+  const totalBonuses = useMemo(() => {
+    return Object.values(equipment).reduce(
+      (acc, item) => {
+        if (!item) return acc;
+        return {
+          damage: acc.damage + (item.bonuses.damage || 0),
+          hp: acc.hp + (item.bonuses.hp || 0),
+          mana: acc.mana + (item.bonuses.mana || 0)
+        };
+      },
+      { damage: 0, hp: 0, mana: 0 }
+    );
+  }, [equipment]);
+
+  const getHpRegenRate = () => {
+    const base = inCombat ? 1 : 3;
+    const penalty = fleeExhausted ? 0.5 : 1;
+    return Math.max(1, Math.floor(base * penalty));
+  };
+
+  const getManaRegenRate = () => {
+    if (!playerClass.isCaster) return 0;
+    const base = isMeditating ? 15 : inCombat ? 1 : 5;
+    const penalty = fleeExhausted ? 0.5 : 1;
+    return Math.max(1, Math.floor(base * penalty));
+  };
+
+  useEffect(() => {
+    const newMaxHp = baseMaxHp + totalBonuses.hp;
+    const newMaxMana = baseMaxMana + totalBonuses.mana;
+    setMaxHp(newMaxHp);
+    setHp(prev => Math.min(newMaxHp, prev));
+    setMaxMana(newMaxMana);
+    setMana(prev => Math.min(newMaxMana, prev));
+  }, [baseMaxHp, baseMaxMana, totalBonuses.hp, totalBonuses.mana]);
+
   const addLog = (message, type = 'normal') => {
-    setCombatLog(prev => [...prev.slice(-5), { message, type, id: Date.now() }]);
+    setCombatLog(prev => {
+      const last = prev[prev.length - 1];
+      if (last && last.message === message && last.type === type) {
+        return prev;
+      }
+      const entry = { message, type, id: Date.now() };
+      lastLogRef.current = entry;
+      return [...prev.slice(-5), entry];
+    });
   };
 
   const spawnMob = () => {
+    if (!currentZone?.mobs?.length) {
+      addLog('No mobs available in this zone.', 'error');
+      return;
+    }
     const mob = currentZone.mobs[Math.floor(Math.random() * currentZone.mobs.length)];
     setCurrentMob(mob);
     setMobHp(mob.hp);
     addLog(`${mob.name} spawns!`, 'spawn');
+  };
+
+  const availableZoneIds = useMemo(() => {
+    const connections = currentZone.connections || [];
+    const options = new Set([currentZoneId, ...connections]);
+    return Array.from(options).filter(id => zonesData[id]);
+  }, [currentZone, currentZoneId]);
+
+  const changeZone = (zoneId) => {
+    if (!availableZoneIds.includes(zoneId)) {
+      addLog('You cannot travel there directly from this zone.', 'error');
+      return;
+    }
+    setCurrentZoneId(zoneId);
+    addLog(`You travel to ${zonesData[zoneId].name}.`, 'system');
+    setInCombat(false);
+    setIsMeditating(false);
+    setIsAutoAttack(false);
+    setCurrentMob(null);
+    setMobHp(0);
+    setFleeExhausted(false);
+
+    if (autoAttackInterval.current) clearInterval(autoAttackInterval.current);
+    if (combatTimeout.current) clearTimeout(combatTimeout.current);
+    if (fleeExhaustTimeout.current) clearTimeout(fleeExhaustTimeout.current);
+  };
+
+  const handleModeChange = (nextMode) => {
+    if (nextMode === mode) return;
+    setMode(nextMode);
+    addLog(
+      nextMode === 'hardcore'
+        ? 'Hardcore mode enabled: death will reset your run!'
+        : 'Normal mode enabled: death returns you to your bind.',
+      'system'
+    );
+  };
+
+  const bindToCurrentLevel = () => {
+    if (mode === 'hardcore') {
+      addLog('Binding is disabled in hardcore mode.', 'error');
+      return;
+    }
+    if (inCombat) {
+      addLog('You cannot bind while in combat!', 'error');
+      return;
+    }
+    setBoundLevel(level);
+    addLog(`You bind your soul at level ${level}.`, 'system');
+  };
+
+  const handleDeath = (killerName = 'an enemy') => {
+    if (isDeadRef.current) return;
+    isDeadRef.current = true;
+
+    addLog(`You have been slain by ${killerName}!`, 'error');
+    setInCombat(false);
+    setIsMeditating(false);
+    setIsAutoAttack(false);
+    setFleeExhausted(false);
+
+    if (autoAttackInterval.current) clearInterval(autoAttackInterval.current);
+    if (combatTimeout.current) clearTimeout(combatTimeout.current);
+    if (fleeExhaustTimeout.current) clearTimeout(fleeExhaustTimeout.current);
+
+    setCurrentMob(null);
+    setMobHp(0);
+
+    if (mode === 'hardcore') {
+      setLeaderboard(prev => {
+        const updated = [{ levelReached: level, timestamp: Date.now() }, ...prev];
+        return updated.sort((a, b) => b.levelReached - a.levelReached).slice(0, 5);
+      });
+      setLevel(1);
+      setXp(0);
+      setHp(playerClass.baseHp);
+      setMana(playerClass.baseMana);
+      setCopper(0);
+      setSilver(0);
+      setGold(0);
+      setPlatinum(0);
+      setInventory([]);
+      setEquipment({
+        weapon: null,
+        chest: null,
+        feet: null,
+        waist: null,
+        jewelry: null,
+        hands: null,
+        back: null,
+        trinket: null
+      });
+      setBoundLevel(1);
+      addLog('Hardcore death! Reset to level 1.', 'system');
+      addLog('Your run was added to the leaderboard.', 'system');
+    } else {
+      setLevel(boundLevel);
+      setXp(0);
+      setHp(maxHp);
+      setMana(maxMana);
+      addLog(`You return to your bind at level ${boundLevel}.`, 'system');
+    }
+
+    setTimeout(() => {
+      isDeadRef.current = false;
+      spawnMob();
+    }, 1000);
   };
 
   const attackMob = () => {
@@ -58,7 +250,8 @@ export default function GrindQuest() {
     if (combatTimeout.current) clearTimeout(combatTimeout.current);
     combatTimeout.current = setTimeout(() => setInCombat(false), 6000);
 
-    const damage = Math.floor(playerClass.baseDamage * (1 + level * 0.1) + Math.random() * 5);
+    const baseDamage = Math.floor(playerClass.baseDamage * (1 + level * 0.1));
+    const damage = Math.floor(baseDamage + totalBonuses.damage + Math.random() * 5);
     const newHp = Math.max(0, mobHp - damage);
     setMobHp(newHp);
     addLog(`You hit ${currentMob.name} for ${damage} damage!`, 'damage');
@@ -77,20 +270,22 @@ export default function GrindQuest() {
       }
 
       if (Math.random() < 0.3) {
-        const lootItem = currentMob.loot[Math.floor(Math.random() * currentMob.loot.length)];
-        setInventory(prev => [...prev, lootItem]);
-        addLog(`You receive: ${lootItem}`, 'loot');
+        const lootItemName = currentMob.loot[Math.floor(Math.random() * currentMob.loot.length)];
+        addLog(`You receive: ${lootItemName}`, 'loot');
 
-        if (lootItem.includes("Pieces")) {
-          if (lootItem.includes("Platinum")) {
+        if (lootItemName.includes("Pieces")) {
+          if (lootItemName.includes("Platinum")) {
             setPlatinum(prev => prev + Math.floor(Math.random() * 5) + 1);
-          } else if (lootItem.includes("Gold")) {
+          } else if (lootItemName.includes("Gold")) {
             setGold(prev => prev + Math.floor(Math.random() * 10) + 1);
-          } else if (lootItem.includes("Silver")) {
+          } else if (lootItemName.includes("Silver")) {
             setSilver(prev => prev + Math.floor(Math.random() * 20) + 1);
-          } else if (lootItem.includes("Copper")) {
+          } else if (lootItemName.includes("Copper")) {
             setCopper(prev => prev + Math.floor(Math.random() * 50) + 1);
           }
+        } else {
+          const item = createItemInstance(lootItemName);
+          setInventory(prev => [...prev, item]);
         }
       }
 
@@ -100,7 +295,13 @@ export default function GrindQuest() {
       setTimeout(() => {
         if (newHp > 0) {
           const mobDamage = currentMob.damage;
-          setHp(prev => Math.max(0, prev - mobDamage));
+          setHp(prev => {
+            const updatedHp = Math.max(0, prev - mobDamage);
+            if (updatedHp === 0) {
+              setTimeout(() => handleDeath(currentMob.name), 0);
+            }
+            return updatedHp;
+          });
           addLog(`${currentMob.name} hits YOU for ${mobDamage} damage!`, 'mobattack');
         }
       }, 500);
@@ -114,6 +315,37 @@ export default function GrindQuest() {
 
   const fleeCombat = () => {
     if (!currentMob) return;
+
+    const applyFleeDebuff = () => {
+      setFleeExhausted(true);
+      if (fleeExhaustTimeout.current) clearTimeout(fleeExhaustTimeout.current);
+      fleeExhaustTimeout.current = setTimeout(() => setFleeExhausted(false), 10000);
+      addLog('You feel exhausted from fleeing. Regen slowed briefly.', 'system');
+    };
+
+    const engaged = inCombat || mobHp < currentMob.hp;
+    const runSpeed = playerClass.runSpeed ?? 1;
+    let successChance = engaged ? 0.65 : 1;
+    successChance = Math.min(0.95, Math.max(0.2, successChance + (runSpeed - 1) * 0.05));
+
+    if (engaged && Math.random() > successChance) {
+      addLog(`You fail to escape ${currentMob.name}!`, 'error');
+      applyFleeDebuff();
+
+      if (engaged) {
+        const mobDamage = currentMob.damage;
+        setHp(prev => {
+          const updatedHp = Math.max(0, prev - mobDamage);
+          if (updatedHp === 0) {
+            setTimeout(() => handleDeath(currentMob.name), 0);
+          }
+          return updatedHp;
+        });
+        addLog(`${currentMob.name} strikes you as you flee for ${mobDamage} damage!`, 'mobattack');
+      }
+      return;
+    }
+
     addLog(`You flee from ${currentMob.name}!`, 'flee');
     setInCombat(false);
     setIsMeditating(false);
@@ -121,7 +353,39 @@ export default function GrindQuest() {
       clearInterval(autoAttackInterval.current);
       setIsAutoAttack(false);
     }
+
+    applyFleeDebuff();
+
     spawnMob();
+  };
+
+  const equipItem = (itemId) => {
+    setInventory(prev => {
+      const item = prev.find(i => i.id === itemId);
+      if (!item) return prev;
+      if (!equipSlots.includes(item.slot)) {
+        addLog(`You cannot equip ${item.name}.`, 'error');
+        return prev;
+      }
+      const remaining = prev.filter(i => i.id !== itemId);
+      let swapped = null;
+      setEquipment(prevEquip => {
+        swapped = prevEquip[item.slot] || null;
+        return { ...prevEquip, [item.slot]: item };
+      });
+      addLog(`You equip ${item.name} (${item.slot}).`, 'system');
+      return swapped ? [...remaining, swapped] : remaining;
+    });
+  };
+
+  const unequipItem = (slot) => {
+    setEquipment(prevEquip => {
+      const item = prevEquip[slot];
+      if (!item) return prevEquip;
+      setInventory(prev => [...prev, item]);
+      addLog(`You unequip ${item.name}.`, 'system');
+      return { ...prevEquip, [slot]: null };
+    });
   };
 
   const toggleMeditate = () => {
@@ -154,19 +418,19 @@ export default function GrindQuest() {
 
   useEffect(() => {
     spawnMob();
-  }, []);
+  }, [currentZoneId]);
 
   useEffect(() => {
     regenInterval.current = setInterval(() => {
       setHp(prev => {
-        const hpRegenRate = inCombat ? 1 : 3;
-        return Math.min(maxHp, prev + hpRegenRate);
+        const hpGain = getHpRegenRate();
+        return Math.min(maxHp, prev + hpGain);
       });
 
       if (playerClass.isCaster) {
         setMana(prev => {
-          const manaRegenRate = isMeditating ? 15 : inCombat ? 1 : 5;
-          return Math.min(maxMana, prev + manaRegenRate);
+          const manaGain = getManaRegenRate();
+          return Math.min(maxMana, prev + manaGain);
         });
       }
     }, 2000);
@@ -176,7 +440,10 @@ export default function GrindQuest() {
         clearInterval(regenInterval.current);
       }
     };
-  }, [inCombat, isMeditating, maxHp, maxMana, playerClass.isCaster]);
+  }, [inCombat, isMeditating, maxHp, maxMana, playerClass.isCaster, fleeExhausted]);
+
+  const displayMinDamage = Math.floor(playerClass.baseDamage * (1 + level * 0.1)) + totalBonuses.damage;
+  const displayMaxDamage = displayMinDamage + 5;
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-slate-900 to-slate-800 text-gray-100 p-6">
@@ -201,11 +468,17 @@ export default function GrindQuest() {
               isMeditating={isMeditating}
               currency={{ copper, silver, gold, platinum }}
             />
-            <InventoryPanel inventory={inventory} />
+            <EquipmentPanel equipment={equipment} onUnequip={unequipItem} />
+            <InventoryPanel inventory={inventory} onEquip={equipItem} equipSlots={equipSlots} />
           </div>
 
           <div className="space-y-6">
-            <ZonePanel currentZone={currentZone} />
+            <ZonePanel
+              zones={zonesData}
+              currentZoneId={currentZoneId}
+              onZoneChange={changeZone}
+              availableZoneIds={availableZoneIds}
+            />
             <CombatPanel
               currentMob={currentMob}
               mobHp={mobHp}
@@ -222,14 +495,28 @@ export default function GrindQuest() {
           </div>
 
           <div className="space-y-6">
+            <ModePanel
+              mode={mode}
+              onModeChange={handleModeChange}
+              boundLevel={boundLevel}
+              onBind={bindToCurrentLevel}
+              currentLevel={level}
+              inCombat={inCombat}
+            />
             <InstructionsPanel isCaster={playerClass.isCaster} />
             <StatsPanel
               playerClass={playerClass}
               level={level}
               inCombat={inCombat}
               isMeditating={isMeditating}
+              hpRegenRate={getHpRegenRate()}
+              manaRegenRate={getManaRegenRate()}
+              fleeExhausted={fleeExhausted}
+              damageRange={{ min: displayMinDamage, max: displayMaxDamage }}
+              gearBonuses={totalBonuses}
               inventoryLength={inventory.length}
             />
+            <HardcoreLeaderboard leaderboard={leaderboard} />
             <FutureFeaturesPanel />
           </div>
         </div>
