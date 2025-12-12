@@ -818,14 +818,6 @@ export default function GrindQuest() {
           </div>
 
           <div className="space-y-6">
-            <ModePanel
-              mode={mode}
-              onModeChange={handleModeChange}
-              boundLevel={boundLevel}
-              onBind={bindToCurrentLevel}
-              currentLevel={level}
-              inCombat={inCombat}
-            />
             <InstructionsPanel isCaster={playerClass.isCaster} />
             <StatsPanel
               playerClass={playerClass}
