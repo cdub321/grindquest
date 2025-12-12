@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 
 // Game data
 const ZONES = {
@@ -13,8 +13,9 @@ const ZONES = {
 };
 
 const CLASSES = {
-  warrior: { name: "Warrior", baseDamage: 8, baseHp: 120, attackSpeed: 1000 },
-  wizard: { name: "Wizard", baseDamage: 15, baseHp: 80, attackSpeed: 2500, mana: 100 }
+  warrior: { name: "Warrior", baseDamage: 8, baseHp: 120, baseMana: 0, attackSpeed: 1000, isCaster: false },
+  wizard: { name: "Wizard", baseDamage: 15, baseHp: 80, baseMana: 200, attackSpeed: 2500, isCaster: true },
+  cleric: { name: "Cleric", baseDamage: 6, baseHp: 100, baseMana: 150, attackSpeed: 1500, isCaster: true }
 };
 
 export default function GrindQuest() {
@@ -24,6 +25,8 @@ export default function GrindQuest() {
   const [xp, setXp] = useState(0);
   const [hp, setHp] = useState(playerClass.baseHp);
   const [maxHp] = useState(playerClass.baseHp);
+  const [mana, setMana] = useState(playerClass.baseMana);
+  const [maxMana] = useState(playerClass.baseMana);
   const [gold, setGold] = useState(0);
   
   // Combat state
@@ -33,9 +36,13 @@ export default function GrindQuest() {
   const [isAutoAttack, setIsAutoAttack] = useState(false);
   const [combatLog, setCombatLog] = useState([]);
   const [inventory, setInventory] = useState([]);
+  const [inCombat, setInCombat] = useState(false);
+  const [isMeditating, setIsMeditating] = useState(false);
   
   // Refs for timers
   const autoAttackInterval = useRef(null);
+  const regenInterval = useRef(null);
+  const combatTimeout = useRef(null);
   
   // XP needed for next level
   const xpNeeded = level * 100;
@@ -56,6 +63,14 @@ export default function GrindQuest() {
   // Attack the current mob
   const attackMob = () => {
     if (!currentMob || mobHp <= 0) return;
+    
+    // Enter combat state
+    setInCombat(true);
+    setIsMeditating(false);
+    
+    // Clear combat timeout and restart it
+    if (combatTimeout.current) clearTimeout(combatTimeout.current);
+    combatTimeout.current = setTimeout(() => setInCombat(false), 6000);
     
     const damage = Math.floor(playerClass.baseDamage * (1 + level * 0.1) + Math.random() * 5);
     const newHp = Math.max(0, mobHp - damage);
@@ -93,6 +108,7 @@ export default function GrindQuest() {
       
       // Spawn new mob after delay
       setTimeout(() => spawnMob(), 1000);
+      setInCombat(false);
     } else {
       // Mob counter-attacks
       setTimeout(() => {
@@ -109,6 +125,30 @@ export default function GrindQuest() {
   const toggleAutoAttack = () => {
     setIsAutoAttack(!isAutoAttack);
     addLog(isAutoAttack ? 'Auto-attack disabled' : 'Auto-attack enabled', 'system');
+  };
+  
+  // Flee from combat
+  const fleeCombat = () => {
+    if (!currentMob) return;
+    addLog(`You flee from ${currentMob.name}!`, 'flee');
+    setInCombat(false);
+    setIsMeditating(false);
+    if (autoAttackInterval.current) {
+      clearInterval(autoAttackInterval.current);
+      setIsAutoAttack(false);
+    }
+    spawnMob();
+  };
+  
+  // Toggle meditation
+  const toggleMeditate = () => {
+    if (!playerClass.isCaster) return;
+    if (inCombat) {
+      addLog('You cannot meditate while in combat!', 'error');
+      return;
+    }
+    setIsMeditating(!isMeditating);
+    addLog(isMeditating ? 'You stop meditating.' : 'You sit down to meditate.', 'system');
   };
   
   // Auto-attack effect
@@ -134,6 +174,31 @@ export default function GrindQuest() {
   useEffect(() => {
     spawnMob();
   }, []);
+  
+  // HP and Mana regeneration
+  useEffect(() => {
+    regenInterval.current = setInterval(() => {
+      // HP regen (faster out of combat)
+      setHp(prev => {
+        const hpRegenRate = inCombat ? 1 : 3;
+        return Math.min(maxHp, prev + hpRegenRate);
+      });
+      
+      // Mana regen (only for casters, much faster while meditating)
+      if (playerClass.isCaster) {
+        setMana(prev => {
+          const manaRegenRate = isMeditating ? 15 : inCombat ? 1 : 5;
+          return Math.min(maxMana, prev + manaRegenRate);
+        });
+      }
+    }, 2000); // Tick every 2 seconds
+    
+    return () => {
+      if (regenInterval.current) {
+        clearInterval(regenInterval.current);
+      }
+    };
+  }, [inCombat, isMeditating, maxHp, maxMana, playerClass.isCaster]);
   
   return (
     <div className="min-h-screen bg-gradient-to-b from-slate-900 to-slate-800 text-gray-100 p-6">
@@ -163,7 +228,7 @@ export default function GrindQuest() {
                 {/* HP Bar */}
                 <div>
                   <div className="flex justify-between text-sm mb-1">
-                    <span className="text-red-400">HP</span>
+                    <span className="text-red-400">HP {inCombat && '⚔️'}</span>
                     <span className="text-white">{hp} / {maxHp}</span>
                   </div>
                   <div className="w-full bg-gray-700 rounded-full h-4">
@@ -173,6 +238,22 @@ export default function GrindQuest() {
                     />
                   </div>
                 </div>
+                
+                {/* Mana Bar (casters only) */}
+                {playerClass.isCaster && (
+                  <div>
+                    <div className="flex justify-between text-sm mb-1">
+                      <span className="text-blue-400">Mana {isMeditating && '🧘'}</span>
+                      <span className="text-white">{mana} / {maxMana}</span>
+                    </div>
+                    <div className="w-full bg-gray-700 rounded-full h-4">
+                      <div 
+                        className="bg-blue-600 h-4 rounded-full transition-all duration-300"
+                        style={{ width: `${(mana / maxMana) * 100}%` }}
+                      />
+                    </div>
+                  </div>
+                )}
                 
                 {/* XP Bar */}
                 <div>
@@ -252,20 +333,39 @@ export default function GrindQuest() {
               )}
               
               {/* Combat Buttons */}
-              <div className="flex gap-2">
+              <div className="grid grid-cols-2 gap-2 mb-2">
                 <button
                   onClick={attackMob}
                   disabled={!currentMob || mobHp === 0}
-                  className="flex-1 bg-red-600 hover:bg-red-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white font-bold py-3 px-4 rounded transition-colors"
+                  className="bg-red-600 hover:bg-red-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white font-bold py-3 px-4 rounded transition-colors"
                 >
                   Attack
                 </button>
                 <button
                   onClick={toggleAutoAttack}
-                  className={`flex-1 ${isAutoAttack ? 'bg-green-600 hover:bg-green-700' : 'bg-blue-600 hover:bg-blue-700'} text-white font-bold py-3 px-4 rounded transition-colors`}
+                  className={`${isAutoAttack ? 'bg-green-600 hover:bg-green-700' : 'bg-blue-600 hover:bg-blue-700'} text-white font-bold py-3 px-4 rounded transition-colors`}
                 >
                   {isAutoAttack ? 'Auto: ON' : 'Auto: OFF'}
                 </button>
+              </div>
+              
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  onClick={fleeCombat}
+                  disabled={!currentMob}
+                  className="bg-yellow-600 hover:bg-yellow-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white font-bold py-2 px-4 rounded transition-colors text-sm"
+                >
+                  Flee
+                </button>
+                {playerClass.isCaster && (
+                  <button
+                    onClick={toggleMeditate}
+                    disabled={inCombat}
+                    className={`${isMeditating ? 'bg-purple-600 hover:bg-purple-700' : 'bg-indigo-600 hover:bg-indigo-700'} disabled:bg-gray-600 disabled:cursor-not-allowed text-white font-bold py-2 px-4 rounded transition-colors text-sm`}
+                  >
+                    {isMeditating ? 'Stand' : 'Meditate'}
+                  </button>
+                )}
               </div>
             </div>
             
@@ -285,6 +385,8 @@ export default function GrindQuest() {
                       ${log.type === 'mobattack' ? 'text-red-400' : ''}
                       ${log.type === 'spawn' ? 'text-gray-400' : ''}
                       ${log.type === 'system' ? 'text-cyan-400' : ''}
+                      ${log.type === 'flee' ? 'text-yellow-300' : ''}
+                      ${log.type === 'error' ? 'text-red-300' : ''}
                       ${log.type === 'normal' ? 'text-gray-300' : ''}
                     `}
                   >
@@ -303,9 +405,12 @@ export default function GrindQuest() {
               <div className="space-y-2 text-sm text-gray-300">
                 <p>🗡️ Click <strong>Attack</strong> to fight mobs manually</p>
                 <p>⚙️ Enable <strong>Auto-Attack</strong> to fight automatically</p>
+                <p>🏃 Click <strong>Flee</strong> to run from dangerous mobs</p>
+                {playerClass.isCaster && <p>🧘 <strong>Meditate</strong> for faster mana regen</p>}
                 <p>📈 Gain XP to level up and deal more damage</p>
                 <p>💰 Collect loot and gold from defeated enemies</p>
                 <p>⭐ Named mobs (yellow) have better loot!</p>
+                <p>❤️ HP regenerates faster out of combat</p>
               </div>
             </div>
             
@@ -321,6 +426,16 @@ export default function GrindQuest() {
                   <span className="text-gray-400">Attack Speed:</span>
                   <span className="text-white">{playerClass.attackSpeed}ms</span>
                 </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-400">HP Regen:</span>
+                  <span className="text-white">{inCombat ? '1' : '3'} / 2s</span>
+                </div>
+                {playerClass.isCaster && (
+                  <div className="flex justify-between">
+                    <span className="text-gray-400">Mana Regen:</span>
+                    <span className="text-white">{isMeditating ? '15' : inCombat ? '1' : '5'} / 2s</span>
+                  </div>
+                )}
                 <div className="flex justify-between">
                   <span className="text-gray-400">Items Found:</span>
                   <span className="text-white">{inventory.length}</span>
