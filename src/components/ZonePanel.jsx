@@ -1,5 +1,13 @@
-export default function ZonePanel({ zones, currentZoneId, onZoneChange, availableZoneIds }) {
-  const currentZone = zones[currentZoneId];
+export default function ZonePanel({
+  zones,
+  currentZoneId,
+  onZoneChange,
+  availableZoneIds,
+  camps = [],
+  currentCampId,
+  onCampChange
+}) {
+  const currentZone = zones[currentZoneId] || { name: 'Unknown', connections: [], levelRange: null };
   const zoneEntries = availableZoneIds.map(id => [id, zones[id]]).filter(([, zone]) => zone);
   const connectedNames = (currentZone.connections || [])
     .map(id => zones[id]?.name)
@@ -29,6 +37,22 @@ export default function ZonePanel({ zones, currentZoneId, onZoneChange, availabl
           ))}
         </select>
       </div>
+      {camps.length > 0 && (
+        <div className="space-y-2 mt-4">
+          <label className="text-sm text-gray-300 block">Camp:</label>
+          <select
+            className="w-full bg-slate-700 text-white rounded p-2 border border-blue-900"
+            value={currentCampId || ''}
+            onChange={(e) => onCampChange(e.target.value)}
+          >
+            {camps.map((camp) => (
+              <option key={camp.id} value={camp.id}>
+                {camp.name || camp.id}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
     </div>
   );
 }

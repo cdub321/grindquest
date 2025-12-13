@@ -156,3 +156,13 @@ export async function saveEquipment(characterId, equipment) {
     .insert(rows);
   if (insErr) throw insErr;
 }
+
+export async function fetchUserRole(userId) {
+  const { data, error } = await supabase
+    .from('user_roles')
+    .select('role')
+    .eq('user_id', userId)
+    .maybeSingle();
+  if (error) throw error;
+  return data?.role || null;
+}

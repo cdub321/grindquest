@@ -8,7 +8,9 @@ export default function StatsPanel({
   fleeExhausted,
   damageRange,
   gearBonuses,
-  inventoryLength
+  inventoryLength,
+  attackDelay,
+  derivedStats
 }) {
   return (
     <div className="bg-slate-800 border-2 border-blue-900 rounded-lg p-4">
@@ -23,7 +25,7 @@ export default function StatsPanel({
         </div>
         <div className="flex justify-between">
           <span className="text-gray-400">Attack Speed:</span>
-          <span className="text-white">{playerClass.attackSpeed}ms</span>
+          <span className="text-white">{attackDelay}ms {gearBonuses.haste ? `(haste ${gearBonuses.haste}%)` : ''}</span>
         </div>
         <div className="flex justify-between">
           <span className="text-gray-400">HP Regen:</span>
@@ -45,8 +47,34 @@ export default function StatsPanel({
             {gearBonuses.damage ? `+${gearBonuses.damage} dmg ` : ''}
             {gearBonuses.hp ? `+${gearBonuses.hp} HP ` : ''}
             {gearBonuses.mana ? `+${gearBonuses.mana} Mana ` : ''}
+            {gearBonuses.ac ? `+${gearBonuses.ac} AC ` : ''}
+            {gearBonuses.str ? `+${gearBonuses.str} STR ` : ''}
+            {gearBonuses.sta ? `+${gearBonuses.sta} STA ` : ''}
+            {gearBonuses.dex ? `+${gearBonuses.dex} DEX ` : ''}
+            {gearBonuses.agi ? `+${gearBonuses.agi} AGI ` : ''}
+            {gearBonuses.int ? `+${gearBonuses.int} INT ` : ''}
+            {gearBonuses.wis ? `+${gearBonuses.wis} WIS ` : ''}
+            {gearBonuses.cha ? `+${gearBonuses.cha} CHA ` : ''}
             {!gearBonuses.hp && !gearBonuses.mana && !gearBonuses.damage ? 'None' : ''}
           </span>
+        </div>
+        <div className="flex justify-between">
+          <span className="text-gray-400">Resists:</span>
+          <span className="text-white">
+            MR {gearBonuses.mr || 0} / FR {gearBonuses.fr || 0} / CR {gearBonuses.cr || 0} / PR {gearBonuses.pr || 0} / DR {gearBonuses.dr || 0}
+          </span>
+        </div>
+        <div className="flex justify-between">
+          <span className="text-gray-400">AC:</span>
+          <span className="text-white">{gearBonuses.ac || 0}</span>
+        </div>
+        <div className="flex justify-between">
+          <span className="text-gray-400">Carry Cap:</span>
+          <span className="text-white">{derivedStats?.carryCap || 0}</span>
+        </div>
+        <div className="flex justify-between">
+          <span className="text-gray-400">Spell/Heal Mods:</span>
+          <span className="text-white">Spell +{derivedStats?.spellDmgMod || 0}% | Heal +{derivedStats?.healMod || 0}%</span>
         </div>
         <div className="flex justify-between">
           <span className="text-gray-400">Items Found:</span>

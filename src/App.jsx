@@ -1,7 +1,6 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import classesData from './data/classes.json';
 import zonesData from './data/zones.json';
-import itemsData from './data/items.json';
 import CharacterPanel from './components/CharacterPanel';
 import InventoryPanel from './components/InventoryPanel';
 import ZonePanel from './components/ZonePanel';
@@ -10,6 +9,8 @@ import CombatLog from './components/CombatLog';
 import InstructionsPanel from './components/InstructionsPanel';
 import StatsPanel from './components/StatsPanel';
 import FutureFeaturesPanel from './components/FutureFeaturesPanel';
+import SkillsPanel from './components/SkillsPanel';
+import DevPanel from './components/DevPanel';
 import HardcoreLeaderboard from './components/HardcoreLeaderboard';
 import EquipmentPanel from './components/EquipmentPanel';
 import AuthPanel from './components/AuthPanel';
@@ -26,7 +27,8 @@ import {
   fetchCharacters,
   createCharacter,
   deleteCharacter,
-  loadCharacter
+  loadCharacter,
+  fetchUserRole
 } from './services/playerStorage';
 import CharacterSelectPanel from './components/CharacterSelectPanel';
 import CharacterCreatePanel from './components/CharacterCreatePanel';
@@ -34,6 +36,11 @@ import {
   fetchClassesCatalog,
   fetchDeities,
   fetchDeityClassAllowed,
+  fetchItemsCatalog,
+  fetchSkillsCatalog,
+  fetchCamps,
+  fetchZoneMobs,
+  fetchZonesAndConnections,
   fetchRaceClassAllowed,
   fetchRaces
 } from './services/referenceData';
@@ -54,6 +61,12 @@ export default function GrindQuest() {
   const [mode, setMode] = useState('normal');
   const [raceId, setRaceId] = useState(null);
   const [deityId, setDeityId] = useState(null);
+  const [zones, setZones] = useState(zonesData);
+  const [items, setItems] = useState({});
+  const [skills, setSkills] = useState([]);
+  const [zoneMobs, setZoneMobs] = useState({});
+  const [campsByZone, setCampsByZone] = useState({});
+  const [currentCampId, setCurrentCampId] = useState(null);
   const [boundLevel, setBoundLevel] = useState(1);
   const [leaderboard, setLeaderboard] = useState([]);
   const [user, setUser] = useState(null);
@@ -63,6 +76,9 @@ export default function GrindQuest() {
   const [isSelectingCharacter, setIsSelectingCharacter] = useState(false);
   const [isCreatingCharacter, setIsCreatingCharacter] = useState(false);
   const [loadError, setLoadError] = useState('');
+  const [userRole, setUserRole] = useState(null);
+  const [skillCooldowns, setSkillCooldowns] = useState({});
+  const [cooldownTick, setCooldownTick] = useState(0);
 
   const classes = useMemo(() => {
     const merged = { ...classesData };
@@ -109,10 +125,11 @@ export default function GrindQuest() {
   const [mana, setMana] = useState(baseMaxMana);
   const [maxMana, setMaxMana] = useState(baseMaxMana);
 
-  const zoneEntries = Object.entries(zonesData);
+  const zoneEntries = Object.entries(zones);
   const initialZoneId = zoneEntries[0]?.[0] || '';
   const [currentZoneId, setCurrentZoneId] = useState(initialZoneId);
-  const currentZone = zonesData[currentZoneId] || { name: 'Unknown', mobs: [] };
+  const currentZone = zones[currentZoneId] || { name: 'Unknown', mobs: [] };
+  const currentZoneCamps = campsByZone[currentZoneId] || [];
   const equipSlots = ['weapon', 'chest', 'feet', 'waist', 'jewelry', 'hands', 'back', 'trinket'];
   const [currentMob, setCurrentMob] = useState(null);
   const [mobHp, setMobHp] = useState(0);
@@ -140,24 +157,122 @@ export default function GrindQuest() {
   const fleeExhaustTimeout = useRef(null);
   const lastLogRef = useRef(null);
   const saveTimeout = useRef(null);
+  const justLoadedRef = useRef(false);
 
   const xpNeeded = level * 100;
 
   useEffect(() => {
     const loadReferenceData = async () => {
       try {
-        const [cls, rcs, dts, rcMap, dcMap] = await Promise.all([
+        const [cls, rcs, dts, rcMap, dcMap, zonesResult, itemsResult, skillsResult, mobsResult, campsResult] = await Promise.all([
           fetchClassesCatalog(),
           fetchRaces(),
           fetchDeities(),
           fetchRaceClassAllowed(),
-          fetchDeityClassAllowed()
+          fetchDeityClassAllowed(),
+          fetchZonesAndConnections(),
+          fetchItemsCatalog(),
+          fetchSkillsCatalog(),
+          fetchZoneMobs().catch(() => []),
+          fetchCamps().catch(() => [])
         ]);
         setClassCatalog(cls || []);
         setRaces(rcs || []);
         setDeities(dts || []);
         setRaceClassAllowed(rcMap || []);
         setDeityClassAllowed(dcMap || []);
+        if (itemsResult?.length) {
+          const mapped = {};
+          itemsResult.forEach((it) => {
+            mapped[it.id] = {
+              name: it.name,
+              slot: it.slot,
+              bonuses: {
+                damage: it.damage || 0,
+                delay: it.delay || null,
+                haste: it.haste_bonus || 0,
+                hp: it.hp_bonus || 0,
+                mana: it.mana_bonus || 0,
+                str: it.str_bonus || 0,
+                sta: it.sta_bonus || 0,
+                agi: it.agi_bonus || 0,
+                dex: it.dex_bonus || 0,
+                int: it.int_bonus || 0,
+                wis: it.wis_bonus || 0,
+                cha: it.cha_bonus || 0,
+                mr: it.mr_bonus || 0,
+                dr: it.dr_bonus || 0,
+                fr: it.fr_bonus || 0,
+                cr: it.cr_bonus || 0,
+                pr: it.pr_bonus || 0,
+                ac: it.ac_bonus || 0
+              }
+            };
+            if (it.name && !mapped[it.name]) {
+              mapped[it.name] = mapped[it.id];
+            }
+          });
+          setItems(mapped);
+        }
+        if (skillsResult?.length) {
+          setSkills(skillsResult);
+        }
+        if (mobsResult?.length) {
+          const byZone = {};
+          mobsResult.forEach((row) => {
+            if (!byZone[row.zone_id]) byZone[row.zone_id] = [];
+            byZone[row.zone_id].push({
+              name: row.name,
+              hp: row.hp,
+              damage: row.damage,
+              xp: row.xp,
+              camp_id: row.camp_id || null,
+              isNamed: row.is_named,
+              tags: row.tags || [],
+              ac: row.ac || 0,
+              resists: {
+                mr: row.mr || 0,
+                fr: row.fr || 0,
+                cr: row.cr || 0,
+                pr: row.pr || 0,
+                dr: row.dr || 0
+              },
+              lootTable: row.loot_table || []
+            });
+          });
+          setZoneMobs(byZone);
+        }
+        if (zonesResult?.zones?.length) {
+          const base = { ...zonesData };
+          zonesResult.zones.forEach((z) => {
+            base[z.id] = {
+              ...(base[z.id] || {}),
+              name: z.name,
+              biome: z.biome,
+              connections: []
+            };
+          });
+          (zonesResult.connections || []).forEach((c) => {
+            if (base[c.from_zone]) {
+              base[c.from_zone].connections = base[c.from_zone].connections || [];
+              base[c.from_zone].connections.push(c.to_zone);
+            }
+          });
+          setZones(base);
+        }
+        if (campsResult?.length) {
+          const grouped = campsResult.reduce((acc, c) => {
+            acc[c.zone_id] = acc[c.zone_id] || [];
+            acc[c.zone_id].push(c);
+            return acc;
+          }, {});
+          setCampsByZone(grouped);
+          // set default camp if current zone has camps
+          const zoneCamps = grouped[initialZoneId] || [];
+          if (zoneCamps.length) {
+            setCurrentCampId(zoneCamps[0].id);
+          }
+        }
       } catch (err) {
         console.error('Failed to load reference data', err);
       }
@@ -166,10 +281,10 @@ export default function GrindQuest() {
   }, []);
 
   const createItemInstance = (name) => {
-    const data = itemsData[name] || { slot: 'misc', bonuses: {} };
+    const data = items[name] || items[name?.toLowerCase?.()] || { slot: 'misc', bonuses: {} };
     return {
       id: `${name}-${Date.now()}-${Math.random().toString(16).slice(2)}`,
-      name,
+      name: data.name || name,
       slot: data.slot || 'misc',
       bonuses: data.bonuses || {}
     };
@@ -181,13 +296,71 @@ export default function GrindQuest() {
         if (!item) return acc;
         return {
           damage: acc.damage + (item.bonuses.damage || 0),
+          delay: item.bonuses.delay ? item.bonuses.delay : acc.delay,
+          haste: acc.haste + (item.bonuses.haste || 0),
           hp: acc.hp + (item.bonuses.hp || 0),
-          mana: acc.mana + (item.bonuses.mana || 0)
+          mana: acc.mana + (item.bonuses.mana || 0),
+          str: acc.str + (item.bonuses.str || 0),
+          sta: acc.sta + (item.bonuses.sta || 0),
+          agi: acc.agi + (item.bonuses.agi || 0),
+          dex: acc.dex + (item.bonuses.dex || 0),
+          int: acc.int + (item.bonuses.int || 0),
+          wis: acc.wis + (item.bonuses.wis || 0),
+          cha: acc.cha + (item.bonuses.cha || 0),
+          mr: acc.mr + (item.bonuses.mr || 0),
+          dr: acc.dr + (item.bonuses.dr || 0),
+          fr: acc.fr + (item.bonuses.fr || 0),
+          cr: acc.cr + (item.bonuses.cr || 0),
+          pr: acc.pr + (item.bonuses.pr || 0),
+          ac: acc.ac + (item.bonuses.ac || 0)
         };
       },
-      { damage: 0, hp: 0, mana: 0 }
+      {
+        damage: 0,
+        delay: null,
+        haste: 0,
+        hp: 0,
+        mana: 0,
+        str: 0,
+        sta: 0,
+        agi: 0,
+        dex: 0,
+        int: 0,
+        wis: 0,
+        cha: 0,
+        mr: 0,
+        dr: 0,
+        fr: 0,
+        cr: 0,
+        pr: 0,
+        ac: 0
+      }
     );
   }, [equipment]);
+
+  const derivedStats = useMemo(() => {
+    const strMod = Math.floor((totalBonuses.str || 0) / 10);
+    const dexSpeedMod = Math.max(0.7, 1 - (totalBonuses.dex || 0) * 0.002);
+    const hasteMod = Math.max(0.5, 1 - (totalBonuses.haste || 0) / 100);
+    const baseDelay = totalBonuses.delay || playerClass.attackSpeed || 1000;
+    const attackDelay = Math.max(300, Math.floor(baseDelay * dexSpeedMod * hasteMod));
+    const minDamageBase = Math.floor(playerClass.baseDamage * (1 + level * 0.1));
+    const minDamage = minDamageBase + strMod + (totalBonuses.damage || 0);
+    const maxDamage = minDamage + 5;
+    const hpFromSta = (totalBonuses.sta || 0) * 5;
+    const manaFromStats = ((totalBonuses.int || 0) + (totalBonuses.wis || 0)) * 2;
+    return {
+      minDamage,
+      maxDamage,
+      attackDelay,
+      strMod,
+      hpFromSta,
+      manaFromStats,
+      spellDmgMod: Math.floor((totalBonuses.int || 0) / 10),
+      healMod: Math.floor((totalBonuses.wis || 0) / 10),
+      carryCap: totalBonuses.str || 0
+    };
+  }, [playerClass.attackSpeed, playerClass.baseDamage, totalBonuses, level]);
 
   const getHpRegenRate = () => {
     const base = inCombat ? 1 : 3;
@@ -204,13 +377,29 @@ export default function GrindQuest() {
   };
 
   useEffect(() => {
-    const newMaxHp = baseMaxHp + totalBonuses.hp;
-    const newMaxMana = baseMaxMana + totalBonuses.mana;
+    const t = setInterval(() => setCooldownTick(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, []);
+
+  useEffect(() => {
+    const hpFromSta = (totalBonuses.sta || 0) * 5;
+    const manaFromStats = ((totalBonuses.int || 0) + (totalBonuses.wis || 0)) * 2;
+    const newMaxHp = baseMaxHp + totalBonuses.hp + hpFromSta;
+    const newMaxMana = baseMaxMana + totalBonuses.mana + manaFromStats;
     setMaxHp(newMaxHp);
-    setHp(prev => Math.min(newMaxHp, prev));
+    if (justLoadedRef.current) {
+      setHp(newMaxHp);
+    } else {
+      setHp(prev => Math.min(newMaxHp, prev));
+    }
     setMaxMana(newMaxMana);
-    setMana(prev => Math.min(newMaxMana, prev));
-  }, [baseMaxHp, baseMaxMana, totalBonuses.hp, totalBonuses.mana]);
+    if (justLoadedRef.current) {
+      setMana(newMaxMana);
+      justLoadedRef.current = false;
+    } else {
+      setMana(prev => Math.min(newMaxMana, prev));
+    }
+  }, [baseMaxHp, baseMaxMana, totalBonuses.hp, totalBonuses.mana, totalBonuses.sta, totalBonuses.int, totalBonuses.wis]);
 
   const addLog = (message, type = 'normal') => {
     setCombatLog(prev => {
@@ -225,21 +414,85 @@ export default function GrindQuest() {
   };
 
   const spawnMob = () => {
-    if (!currentZone?.mobs?.length) {
+    const mobList = (zoneMobs[currentZoneId] || currentZone.mobs || []).filter((m) => {
+      if (!currentCampId) return true;
+      const campId = m.camp_id || m.campId;
+      return campId ? campId === currentCampId : true;
+    });
+    if (!mobList.length) {
       addLog('No mobs available in this zone.', 'error');
       return;
     }
-    const mob = currentZone.mobs[Math.floor(Math.random() * currentZone.mobs.length)];
+    const mob = mobList[Math.floor(Math.random() * mobList.length)];
     setCurrentMob(mob);
     setMobHp(mob.hp);
     addLog(`${mob.name} spawns!`, 'spawn');
   };
 
+  const handleMobDeath = () => {
+    if (!currentMob) return;
+    addLog(`${currentMob.name} has been slain!`, 'kill');
+    const xpGain = currentMob.xp;
+    const newXp = xp + xpGain;
+    setXp(newXp);
+    addLog(`You gain ${xpGain} experience!`, 'xp');
+    scheduleSave({
+      character: {
+        level,
+        xp: newXp,
+        zone_id: currentZoneId,
+        currency: { copper, silver, gold, platinum }
+      },
+      inventory,
+      equipment
+    });
+
+    if (newXp >= xpNeeded) {
+      setLevel(level + 1);
+      setXp(newXp - xpNeeded);
+      addLog(`You have gained a level! You are now level ${level + 1}!`, 'levelup');
+      scheduleSave({
+        character: {
+          level: level + 1,
+          xp: newXp - xpNeeded,
+          zone_id: currentZoneId,
+          currency: { copper, silver, gold, platinum }
+        },
+        inventory,
+        equipment
+      });
+    }
+
+    const lootTable = currentMob.lootTable || [];
+    lootTable.forEach((entry) => {
+      if (entry.drop_chance == null) return;
+      const def = items[entry.item_id];
+      if (!def) return;
+      if (Math.random() <= entry.drop_chance) {
+        const qtyMin = entry.min_qty || 1;
+        const qtyMax = entry.max_qty || qtyMin;
+        const qty = Math.max(qtyMin, Math.ceil(Math.random() * qtyMax));
+        for (let i = 0; i < qty; i++) {
+          const item = createItemInstance(def.name);
+          setInventory(prev => {
+            const updated = [...prev, item];
+            scheduleSave({ inventory: updated });
+            return updated;
+          });
+        }
+        addLog(`You receive: ${def.name}${qty > 1 ? ` x${qty}` : ''}`, 'loot');
+      }
+    });
+
+    setTimeout(() => spawnMob(), 1000);
+    setInCombat(false);
+  };
+
   const availableZoneIds = useMemo(() => {
     const connections = currentZone.connections || [];
     const options = new Set([currentZoneId, ...connections]);
-    return Array.from(options).filter(id => zonesData[id]);
-  }, [currentZone, currentZoneId]);
+    return Array.from(options).filter(id => zones[id]);
+  }, [currentZone, currentZoneId, zones]);
 
   const scheduleSave = (payload) => {
     if (!user || !characterId) return;
@@ -268,7 +521,9 @@ export default function GrindQuest() {
       return;
     }
     setCurrentZoneId(zoneId);
-    addLog(`You travel to ${zonesData[zoneId].name}.`, 'system');
+    const zoneCamps = campsByZone[zoneId] || [];
+    setCurrentCampId(zoneCamps[0]?.id || null);
+    addLog(`You travel to ${zones[zoneId]?.name || zoneId}.`, 'system');
     setInCombat(false);
     setIsSitting(false);
     setIsAutoAttack(false);
@@ -387,99 +642,34 @@ export default function GrindQuest() {
     if (combatTimeout.current) clearTimeout(combatTimeout.current);
     combatTimeout.current = setTimeout(() => setInCombat(false), 6000);
 
-    const baseDamage = Math.floor(playerClass.baseDamage * (1 + level * 0.1));
-    const damage = Math.floor(baseDamage + totalBonuses.damage + Math.random() * 5);
+    const base = Math.floor(derivedStats.minDamage + Math.random() * (derivedStats.maxDamage - derivedStats.minDamage + 1));
+    const mitigation = Math.min(base - 1, Math.floor((currentMob.ac || 0) / 10));
+    const damage = Math.max(1, base - mitigation);
     const newHp = Math.max(0, mobHp - damage);
     setMobHp(newHp);
     addLog(`You hit ${currentMob.name} for ${damage} damage!`, 'damage');
 
     if (newHp === 0) {
-      addLog(`${currentMob.name} has been slain!`, 'kill');
-      const xpGain = currentMob.xp;
-      const newXp = xp + xpGain;
-      setXp(newXp);
-      addLog(`You gain ${xpGain} experience!`, 'xp');
-      scheduleSave({
-        character: {
-          level,
-          xp: newXp,
-          zone_id: currentZoneId,
-          currency: { copper, silver, gold, platinum }
-        },
-        inventory,
-        equipment
-      });
-
-      if (newXp >= xpNeeded) {
-        setLevel(level + 1);
-        setXp(newXp - xpNeeded);
-        addLog(`You have gained a level! You are now level ${level + 1}!`, 'levelup');
-        scheduleSave({
-          character: {
-            level: level + 1,
-            xp: newXp - xpNeeded,
-            zone_id: currentZoneId,
-            currency: { copper, silver, gold, platinum }
-          },
-          inventory,
-          equipment
-        });
-      }
-
-      if (Math.random() < 0.3) {
-        const lootItemName = currentMob.loot[Math.floor(Math.random() * currentMob.loot.length)];
-        addLog(`You receive: ${lootItemName}`, 'loot');
-
-        if (lootItemName.includes("Pieces")) {
-          if (lootItemName.includes("Platinum")) {
-            setPlatinum(prev => {
-              const next = prev + Math.floor(Math.random() * 5) + 1;
-              scheduleSave({ character: { currency: { copper, silver, gold, platinum: next } } });
-              return next;
-            });
-          } else if (lootItemName.includes("Gold")) {
-            setGold(prev => {
-              const next = prev + Math.floor(Math.random() * 10) + 1;
-              scheduleSave({ character: { currency: { copper, silver, gold: next, platinum } } });
-              return next;
-            });
-          } else if (lootItemName.includes("Silver")) {
-            setSilver(prev => {
-              const next = prev + Math.floor(Math.random() * 20) + 1;
-              scheduleSave({ character: { currency: { copper, silver: next, gold, platinum } } });
-              return next;
-            });
-          } else if (lootItemName.includes("Copper")) {
-            setCopper(prev => {
-              const next = prev + Math.floor(Math.random() * 50) + 1;
-              scheduleSave({ character: { currency: { copper: next, silver, gold, platinum } } });
-              return next;
-            });
-          }
-        } else {
-          const item = createItemInstance(lootItemName);
-          setInventory(prev => {
-            const updated = [...prev, item];
-            scheduleSave({ inventory: updated });
-            return updated;
-          });
-        }
-      }
-
-      setTimeout(() => spawnMob(), 1000);
-      setInCombat(false);
+      handleMobDeath();
     } else {
       setTimeout(() => {
         if (newHp > 0) {
           const mobDamage = currentMob.damage;
+          const dodgeChance = Math.min(0.3, (totalBonuses.agi || 0) * 0.002);
+          if (Math.random() < dodgeChance) {
+            addLog(`You dodge ${currentMob.name}'s attack!`, 'system');
+            return;
+          }
+          const mitigation = Math.min(mobDamage - 1, Math.floor((totalBonuses.ac || 0) / 10));
+          const finalMobDmg = Math.max(1, mobDamage - mitigation);
           setHp(prev => {
-            const updatedHp = Math.max(0, prev - mobDamage);
+            const updatedHp = Math.max(0, prev - finalMobDmg);
             if (updatedHp === 0) {
               setTimeout(() => handleDeath(currentMob.name), 0);
             }
             return updatedHp;
           });
-          addLog(`${currentMob.name} hits YOU for ${mobDamage} damage!`, 'mobattack');
+          addLog(`${currentMob.name} hits YOU for ${finalMobDmg} damage!`, 'mobattack');
         }
       }, 500);
     }
@@ -583,7 +773,7 @@ export default function GrindQuest() {
     if (isAutoAttack && currentMob && mobHp > 0) {
       autoAttackInterval.current = setInterval(() => {
         attackMob();
-      }, playerClass.attackSpeed);
+      }, derivedStats.attackDelay);
     } else {
       if (autoAttackInterval.current) {
         clearInterval(autoAttackInterval.current);
@@ -595,7 +785,7 @@ export default function GrindQuest() {
         clearInterval(autoAttackInterval.current);
       }
     };
-  }, [isAutoAttack, currentMob, mobHp]);
+  }, [isAutoAttack, currentMob, mobHp, derivedStats.attackDelay]);
 
   useEffect(() => {
     spawnMob();
@@ -696,6 +886,7 @@ export default function GrindQuest() {
         setPlatinum(character.currency?.platinum || 0);
         setInventory(inv.map(i => ({ ...i, id: i.id || `${i.name}-${Math.random()}` })));
         setEquipment(eq);
+        justLoadedRef.current = true;
         setMaxHp(loadedClass.baseHp);
         setHp(loadedClass.baseHp);
         setMaxMana(loadedClass.baseMana);
@@ -717,8 +908,109 @@ export default function GrindQuest() {
     loadProfile();
   }, [characterId, user, initialZoneId]);
 
-  const displayMinDamage = Math.floor(playerClass.baseDamage * (1 + level * 0.1)) + totalBonuses.damage;
-  const displayMaxDamage = displayMinDamage + 5;
+  useEffect(() => {
+    if (!user) {
+      setUserRole(null);
+      return;
+    }
+    fetchUserRole(user.id)
+      .then(setUserRole)
+      .catch(() => setUserRole(null));
+  }, [user]);
+
+  const displayMinDamage = derivedStats.minDamage;
+  const displayMaxDamage = derivedStats.maxDamage;
+
+  const availableSkills = useMemo(() => {
+    const cls = classCatalog.find(c => c.id === playerClassKey) || {};
+    const starters = new Set([
+      ...(cls.starting_general_skills || []),
+      ...(cls.starting_spells || []),
+      ...(cls.starting_innate || []),
+      ...Object.keys(cls.starting_abilities || {})
+    ]);
+    return (skills || [])
+      .filter((s) => {
+        const classAllowed = !s.class_ids?.length || s.class_ids.includes(playerClassKey);
+        const starterAllowed = starters.has(s.id);
+        const levelOk = (s.required_level || 1) <= level;
+        return levelOk && (classAllowed || starterAllowed);
+      })
+      .sort((a, b) => (a.required_level || 1) - (b.required_level || 1));
+  }, [skills, classCatalog, playerClassKey, level]);
+
+  const isSkillOnCooldown = (skill) => {
+    const until = skillCooldowns[skill.id];
+    return until && until > Date.now();
+  };
+
+  const handleUseSkill = (skill) => {
+    if (isSkillOnCooldown(skill)) {
+      addLog(`${skill.name} is on cooldown.`, 'error');
+      return;
+    }
+    const costMana = (skill.resource_cost && skill.resource_cost.mana) || 0;
+    if (costMana > mana) {
+      addLog('Not enough mana.', 'error');
+      return;
+    }
+    if (costMana > 0) {
+      setMana((m) => Math.max(0, m - costMana));
+    }
+    if (skill.cooldown_seconds) {
+      setSkillCooldowns((prev) => ({ ...prev, [skill.id]: Date.now() + skill.cooldown_seconds * 1000 }));
+    }
+
+    const effect = skill.effect || {};
+    if (effect.type === 'damage') {
+      if (!currentMob || mobHp <= 0) {
+        addLog('No target to hit.', 'error');
+        return;
+      }
+      setInCombat(true);
+      setIsSitting(false);
+      const base = effect.base || 0;
+      const scaling = effect.scaling?.coef ? Math.floor((totalBonuses[effect.scaling.stat] || 0) * effect.scaling.coef) : 0;
+      const spellModPct = (derivedStats.spellDmgMod || 0);
+      const preMit = Math.max(1, Math.floor((base + scaling) * (1 + spellModPct / 100)));
+      const mitigation = Math.min(preMit - 1, Math.floor((currentMob.ac || 0) / 10));
+      const dmg = Math.max(1, preMit - mitigation);
+      const newHp = Math.max(0, mobHp - dmg);
+      setMobHp(newHp);
+      addLog(`${skill.name} hits ${currentMob.name} for ${dmg} damage!`, 'damage');
+      if (newHp === 0) {
+        handleMobDeath();
+      } else {
+        setTimeout(() => {
+          if (!currentMob) return;
+          const mobDamage = currentMob.damage;
+          const dodgeChance = Math.min(0.3, (totalBonuses.agi || 0) * 0.002);
+          if (Math.random() < dodgeChance) {
+            addLog(`You dodge ${currentMob.name}'s attack!`, 'system');
+            return;
+          }
+          const mitigation = Math.min(mobDamage - 1, Math.floor((totalBonuses.ac || 0) / 10));
+          const finalMobDmg = Math.max(1, mobDamage - mitigation);
+          setHp(prev => {
+            const updatedHp = Math.max(0, prev - finalMobDmg);
+            if (updatedHp === 0) {
+              setTimeout(() => handleDeath(currentMob.name), 0);
+            }
+            return updatedHp;
+          });
+          addLog(`${currentMob.name} hits YOU for ${finalMobDmg} damage!`, 'mobattack');
+        }, 500);
+      }
+    } else if (effect.type === 'heal' || effect.type === 'hot') {
+      const base = effect.base || effect.tick || 0;
+      const healModPct = derivedStats.healMod || 0;
+      const healAmount = Math.max(1, Math.floor(base * (1 + healModPct / 100)));
+      setHp((prev) => Math.min(maxHp, prev + healAmount));
+      addLog(`You cast ${skill.name} and heal for ${healAmount}!`, 'heal');
+    } else {
+      addLog(`${skill.name} used.`, 'system');
+    }
+  };
 
   const handleAuthSubmit = async ({ email, password, isLogin, onStatus }) => {
     try {
@@ -869,14 +1161,24 @@ export default function GrindQuest() {
             />
             <EquipmentPanel equipment={equipment} onUnequip={unequipItem} />
             <InventoryPanel inventory={inventory} onEquip={equipItem} equipSlots={equipSlots} />
+            <SkillsPanel
+              skills={availableSkills}
+              onUse={handleUseSkill}
+              cooldowns={skillCooldowns}
+              now={cooldownTick}
+            />
+            <DevPanel userRole={userRole} />
           </div>
 
           <div className="space-y-6">
             <ZonePanel
-              zones={zonesData}
+              zones={zones}
               currentZoneId={currentZoneId}
               onZoneChange={changeZone}
               availableZoneIds={availableZoneIds}
+              camps={currentZoneCamps}
+              currentCampId={currentCampId}
+              onCampChange={setCurrentCampId}
             />
             <CombatPanel
               currentMob={currentMob}
@@ -906,6 +1208,8 @@ export default function GrindQuest() {
               damageRange={{ min: displayMinDamage, max: displayMaxDamage }}
               gearBonuses={totalBonuses}
               inventoryLength={inventory.length}
+              attackDelay={derivedStats.attackDelay}
+              derivedStats={derivedStats}
             />
             <HardcoreLeaderboard leaderboard={leaderboard} />
             <FutureFeaturesPanel />
