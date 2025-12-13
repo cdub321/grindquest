@@ -37,14 +37,14 @@ export default function CharacterPanel({
           </div>
         </div>
 
-        {playerClass.isCaster && (
-          <div>
-            <div className="flex justify-between text-sm mb-1">
-              <span className="text-blue-400">Mana {isMeditating && '🧘'}</span>
-              <span className="text-white">{mana} / {maxMana}</span>
-            </div>
-            <div className="w-full bg-gray-700 rounded-full h-4">
-              <div
+                {playerClass.isCaster && (
+                  <div>
+                    <div className="flex justify-between text-sm mb-1">
+                      <span className="text-blue-400">Mana {isMeditating && '🪑'}</span>
+                      <span className="text-white">{mana} / {maxMana}</span>
+                    </div>
+                    <div className="w-full bg-gray-700 rounded-full h-4">
+                      <div
                 className="bg-blue-600 h-4 rounded-full transition-all duration-300"
                 style={{ width: `${(mana / maxMana) * 100}%` }}
               />

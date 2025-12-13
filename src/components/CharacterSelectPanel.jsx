@@ -2,7 +2,10 @@ export default function CharacterSelectPanel({
   characters,
   onSelect,
   onCreateClick,
-  onDelete
+  onDelete,
+  classNameMap = {},
+  raceMap = {},
+  deityMap = {}
 }) {
   return (
     <div className="max-w-4xl mx-auto bg-slate-800 border-2 border-blue-900 rounded-lg p-6 text-gray-100">
@@ -25,9 +28,11 @@ export default function CharacterSelectPanel({
               <div>
                 <div className="text-white font-semibold">{c.name}</div>
                 <div className="text-sm text-gray-300 capitalize">
-                  {c.class} — Level {c.level} — {c.mode || 'normal'}
+                  {(classNameMap[c.class_id] || classNameMap[c.class] || c.class || 'Unknown')} — Level {c.level} — {c.mode || 'normal'}
                 </div>
-                <div className="text-xs text-gray-400">Zone: {c.zone_id}</div>
+                <div className="text-xs text-gray-400">
+                  Zone: {c.zone_id} | Race: {raceMap[c.race_id]?.name || '—'} | Deity: {deityMap[c.deity_id]?.name || '—'}
+                </div>
               </div>
               <div className="flex gap-2">
                 <button

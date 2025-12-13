@@ -8,7 +8,7 @@ export default function InstructionsPanel({ isCaster }) {
         <p>🏃 Click <strong>Flee</strong> to run from dangerous mobs</p>
         <p className="text-yellow-300">⚠️ Fleeing after you engage can fail and slows regen briefly</p>
         <p>🧥 Equip loot to gain bonuses and boost your power</p>
-        {isCaster && <p>🧘 <strong>Meditate</strong> for faster mana regen</p>}
+        <p>🪑 <strong>Sit</strong> to boost HP regen (and Mana if you have it)</p>
         <p>📈 Gain XP to level up and deal more damage</p>
         <p>💰 Collect loot and gold from defeated enemies</p>
         <p>⭐ Named mobs (yellow) have better loot!</p>

@@ -33,12 +33,12 @@ export default function StatsPanel({
         </div>
         {playerClass.isCaster && (
           <div className="flex justify-between">
-            <span className="text-gray-400">Mana Regen:</span>
-            <span className="text-white">
+          <span className="text-gray-400">Mana Regen:</span>
+          <span className="text-white">
               {manaRegenRate} / 2s {fleeExhausted ? '(exhausted)' : ''}
-            </span>
-          </div>
-        )}
+          </span>
+        </div>
+      )}
         <div className="flex justify-between">
           <span className="text-gray-400">Gear Bonuses:</span>
           <span className="text-white">

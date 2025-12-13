@@ -30,10 +30,54 @@ import {
 } from './services/playerStorage';
 import CharacterSelectPanel from './components/CharacterSelectPanel';
 import CharacterCreatePanel from './components/CharacterCreatePanel';
+import {
+  fetchClassesCatalog,
+  fetchDeities,
+  fetchDeityClassAllowed,
+  fetchRaceClassAllowed,
+  fetchRaces
+} from './services/referenceData';
 
 export default function GrindQuest() {
   const [playerClassKey, setPlayerClassKey] = useState('warrior');
-  const playerClass = classesData[playerClassKey] || classesData.warrior;
+  const classes = useMemo(() => {
+    const merged = { ...classesData };
+    classCatalog.forEach((cls) => {
+      merged[cls.id] = {
+        name: cls.name,
+        baseDamage: cls.base_damage ?? cls.baseDamage ?? 5,
+        baseHp: cls.base_hp ?? cls.baseHp ?? 100,
+        baseMana: cls.base_mana ?? cls.baseMana ?? 0,
+        attackSpeed: cls.attack_speed ?? cls.attackSpeed ?? 1000,
+        isCaster: cls.is_caster ?? cls.isCaster ?? false,
+        runSpeed: Number(cls.run_speed ?? cls.runSpeed ?? 1)
+      };
+    });
+    return merged;
+  }, [classCatalog]);
+
+  const classNameMap = useMemo(() => {
+    return Object.entries(classes).reduce((acc, [id, cls]) => {
+      acc[id] = cls.name || id;
+      return acc;
+    }, {});
+  }, [classes]);
+
+  const raceMap = useMemo(() => {
+    return races.reduce((acc, r) => {
+      acc[r.id] = r;
+      return acc;
+    }, {});
+  }, [races]);
+
+  const deityMap = useMemo(() => {
+    return deities.reduce((acc, d) => {
+      acc[d.id] = d;
+      return acc;
+    }, {});
+  }, [deities]);
+
+  const playerClass = classes[playerClassKey] || classesData[playerClassKey] || classesData.warrior;
   const [level, setLevel] = useState(1);
   const [xp, setXp] = useState(0);
   const baseMaxHp = playerClass.baseHp;
@@ -47,6 +91,13 @@ export default function GrindQuest() {
   const [gold, setGold] = useState(0);
   const [platinum, setPlatinum] = useState(0);
   const [mode, setMode] = useState('normal');
+  const [raceId, setRaceId] = useState(null);
+  const [deityId, setDeityId] = useState(null);
+  const [classCatalog, setClassCatalog] = useState([]);
+  const [races, setRaces] = useState([]);
+  const [deities, setDeities] = useState([]);
+  const [raceClassAllowed, setRaceClassAllowed] = useState([]);
+  const [deityClassAllowed, setDeityClassAllowed] = useState([]);
   const [boundLevel, setBoundLevel] = useState(1);
   const [leaderboard, setLeaderboard] = useState([]);
   const [user, setUser] = useState(null);
@@ -78,7 +129,7 @@ export default function GrindQuest() {
     trinket: null
   });
   const [inCombat, setInCombat] = useState(false);
-  const [isMeditating, setIsMeditating] = useState(false);
+  const [isSitting, setIsSitting] = useState(false);
   const [fleeExhausted, setFleeExhausted] = useState(false);
 
   const autoAttackInterval = useRef(null);
@@ -90,6 +141,28 @@ export default function GrindQuest() {
   const saveTimeout = useRef(null);
 
   const xpNeeded = level * 100;
+
+  useEffect(() => {
+    const loadReferenceData = async () => {
+      try {
+        const [cls, rcs, dts, rcMap, dcMap] = await Promise.all([
+          fetchClassesCatalog(),
+          fetchRaces(),
+          fetchDeities(),
+          fetchRaceClassAllowed(),
+          fetchDeityClassAllowed()
+        ]);
+        setClassCatalog(cls || []);
+        setRaces(rcs || []);
+        setDeities(dts || []);
+        setRaceClassAllowed(rcMap || []);
+        setDeityClassAllowed(dcMap || []);
+      } catch (err) {
+        console.error('Failed to load reference data', err);
+      }
+    };
+    loadReferenceData();
+  }, []);
 
   const createItemInstance = (name) => {
     const data = itemsData[name] || { slot: 'misc', bonuses: {} };
@@ -118,12 +191,13 @@ export default function GrindQuest() {
   const getHpRegenRate = () => {
     const base = inCombat ? 1 : 3;
     const penalty = fleeExhausted ? 0.5 : 1;
-    return Math.max(1, Math.floor(base * penalty));
+    const sitBonus = isSitting && !inCombat ? 2 : 1;
+    return Math.max(1, Math.floor(base * penalty * sitBonus));
   };
 
   const getManaRegenRate = () => {
     if (!playerClass.isCaster) return 0;
-    const base = isMeditating ? 15 : inCombat ? 1 : 5;
+    const base = isSitting ? 12 : inCombat ? 1 : 5;
     const penalty = fleeExhausted ? 0.5 : 1;
     return Math.max(1, Math.floor(base * penalty));
   };
@@ -195,7 +269,7 @@ export default function GrindQuest() {
     setCurrentZoneId(zoneId);
     addLog(`You travel to ${zonesData[zoneId].name}.`, 'system');
     setInCombat(false);
-    setIsMeditating(false);
+    setIsSitting(false);
     setIsAutoAttack(false);
     setCurrentMob(null);
     setMobHp(0);
@@ -225,26 +299,13 @@ export default function GrindQuest() {
     );
   };
 
-  const bindToCurrentLevel = () => {
-    if (mode === 'hardcore') {
-      addLog('Binding is disabled in hardcore mode.', 'error');
-      return;
-    }
-    if (inCombat) {
-      addLog('You cannot bind while in combat!', 'error');
-      return;
-    }
-    setBoundLevel(level);
-    addLog(`You bind your soul at level ${level}.`, 'system');
-  };
-
   const handleDeath = (killerName = 'an enemy') => {
     if (isDeadRef.current) return;
     isDeadRef.current = true;
 
     addLog(`You have been slain by ${killerName}!`, 'error');
     setInCombat(false);
-    setIsMeditating(false);
+    setIsSitting(false);
     setIsAutoAttack(false);
     setFleeExhausted(false);
 
@@ -320,7 +381,7 @@ export default function GrindQuest() {
     if (!currentMob || mobHp <= 0) return;
 
     setInCombat(true);
-    setIsMeditating(false);
+    setIsSitting(false);
 
     if (combatTimeout.current) clearTimeout(combatTimeout.current);
     combatTimeout.current = setTimeout(() => setInCombat(false), 6000);
@@ -463,7 +524,7 @@ export default function GrindQuest() {
 
     addLog(`You flee from ${currentMob.name}!`, 'flee');
     setInCombat(false);
-    setIsMeditating(false);
+    setIsSitting(false);
     if (autoAttackInterval.current) {
       clearInterval(autoAttackInterval.current);
       setIsAutoAttack(false);
@@ -508,14 +569,13 @@ export default function GrindQuest() {
     });
   };
 
-  const toggleMeditate = () => {
-    if (!playerClass.isCaster) return;
+  const toggleSit = () => {
     if (inCombat) {
-      addLog('You cannot meditate while in combat!', 'error');
+      addLog('You cannot sit while in combat!', 'error');
       return;
     }
-    setIsMeditating(!isMeditating);
-    addLog(isMeditating ? 'You stop meditating.' : 'You sit down to meditate.', 'system');
+    setIsSitting(!isSitting);
+    addLog(isSitting ? 'You stand up.' : 'You sit down to rest.', 'system');
   };
 
   useEffect(() => {
@@ -560,7 +620,7 @@ export default function GrindQuest() {
         clearInterval(regenInterval.current);
       }
     };
-  }, [inCombat, isMeditating, maxHp, maxMana, playerClass.isCaster, fleeExhausted]);
+  }, [inCombat, isSitting, maxHp, maxMana, playerClass.isCaster, fleeExhausted]);
 
   useEffect(() => {
     (async () => {
@@ -620,10 +680,12 @@ export default function GrindQuest() {
       setIsProfileLoading(true);
       try {
         const { character, inventory: inv, equipment: eq } = await loadCharacter(characterId);
-        const classKey = character.class || 'warrior';
-        const loadedClass = classesData[classKey] || classesData.warrior;
+        const classKey = character.class_id || character.class || 'warrior';
+        const loadedClass = classes[classKey] || classesData[classKey] || classesData.warrior;
         setPlayerClassKey(classKey);
         setMode(character.mode || 'normal');
+        setRaceId(character.race_id || null);
+        setDeityId(character.deity_id || null);
         setLevel(character.level);
         setXp(character.xp);
         setCurrentZoneId(character.zone_id || initialZoneId);
@@ -697,7 +759,7 @@ export default function GrindQuest() {
     }
   };
 
-  const handleCreateCharacter = async ({ name, classKey }) => {
+  const handleCreateCharacter = async ({ name, classKey, raceId: newRaceId, deityId: newDeityId, mode: newMode }) => {
     if (!user) return;
     if (characters.length >= 6) {
       addLog('All 6 character slots are used.', 'error');
@@ -707,9 +769,12 @@ export default function GrindQuest() {
       const newChar = await createCharacter(user.id, {
         name,
         class: classKey,
+        class_id: classKey,
+        race_id: newRaceId,
+        deity_id: newDeityId,
         zone_id: initialZoneId,
         currency: { copper: 0, silver: 0, gold: 0, platinum: 0 },
-        mode
+        mode: newMode || mode
       });
       const updated = [...characters, newChar];
       setCharacters(updated);
@@ -758,12 +823,22 @@ export default function GrindQuest() {
             onSelect={handleSelectCharacter}
             onCreateClick={() => setIsCreatingCharacter(true)}
             onDelete={handleDeleteCharacter}
+            classNameMap={classNameMap}
+            raceMap={raceMap}
+            deityMap={deityMap}
           />
         )}
 
         {user && !isProfileLoading && isCreatingCharacter && (
           <div className="space-y-4">
-            <CharacterCreatePanel classesData={classesData} onCreate={handleCreateCharacter} />
+            <CharacterCreatePanel
+              classesData={classes}
+              races={races}
+              deities={deities}
+              raceClassAllowed={raceClassAllowed}
+              deityClassAllowed={deityClassAllowed}
+              onCreate={handleCreateCharacter}
+            />
             <div className="text-center">
               <button
                 onClick={() => setIsCreatingCharacter(false)}
@@ -788,7 +863,7 @@ export default function GrindQuest() {
               xp={xp}
               xpNeeded={xpNeeded}
               inCombat={inCombat}
-              isMeditating={isMeditating}
+              isMeditating={isSitting}
               currency={{ copper, silver, gold, platinum }}
             />
             <EquipmentPanel equipment={equipment} onUnequip={unequipItem} />
@@ -809,10 +884,10 @@ export default function GrindQuest() {
               toggleAutoAttack={toggleAutoAttack}
               isAutoAttack={isAutoAttack}
               fleeCombat={fleeCombat}
-              toggleMeditate={toggleMeditate}
+              toggleMeditate={toggleSit}
               playerClass={playerClass}
               inCombat={inCombat}
-              isMeditating={isMeditating}
+              isMeditating={isSitting}
             />
             <CombatLog combatLog={combatLog} />
           </div>
@@ -823,7 +898,7 @@ export default function GrindQuest() {
               playerClass={playerClass}
               level={level}
               inCombat={inCombat}
-              isMeditating={isMeditating}
+              isMeditating={isSitting}
               hpRegenRate={getHpRegenRate()}
               manaRegenRate={getManaRegenRate()}
               fleeExhausted={fleeExhausted}

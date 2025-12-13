@@ -64,15 +64,13 @@ export default function CombatPanel({
         >
           Flee
         </button>
-        {playerClass.isCaster && (
-          <button
-            onClick={toggleMeditate}
-            disabled={inCombat}
-            className={`${isMeditating ? 'bg-purple-600 hover:bg-purple-700' : 'bg-indigo-600 hover:bg-indigo-700'} disabled:bg-gray-600 disabled:cursor-not-allowed text-white font-bold py-2 px-4 rounded transition-colors text-sm`}
-          >
-            {isMeditating ? 'Stand' : 'Meditate'}
-          </button>
-        )}
+        <button
+          onClick={toggleMeditate}
+          disabled={inCombat}
+          className={`${isMeditating ? 'bg-purple-600 hover:bg-purple-700' : 'bg-indigo-600 hover:bg-indigo-700'} disabled:bg-gray-600 disabled:cursor-not-allowed text-white font-bold py-2 px-4 rounded transition-colors text-sm`}
+        >
+          {isMeditating ? 'Stand' : 'Sit'}
+        </button>
       </div>
     </div>
   );
