@@ -40,6 +40,30 @@ import {
 
 export default function GrindQuest() {
   const [playerClassKey, setPlayerClassKey] = useState('warrior');
+  const [classCatalog, setClassCatalog] = useState([]);
+  const [races, setRaces] = useState([]);
+  const [deities, setDeities] = useState([]);
+  const [raceClassAllowed, setRaceClassAllowed] = useState([]);
+  const [deityClassAllowed, setDeityClassAllowed] = useState([]);
+  const [level, setLevel] = useState(1);
+  const [xp, setXp] = useState(0);
+  const [copper, setCopper] = useState(0);
+  const [silver, setSilver] = useState(0);
+  const [gold, setGold] = useState(0);
+  const [platinum, setPlatinum] = useState(0);
+  const [mode, setMode] = useState('normal');
+  const [raceId, setRaceId] = useState(null);
+  const [deityId, setDeityId] = useState(null);
+  const [boundLevel, setBoundLevel] = useState(1);
+  const [leaderboard, setLeaderboard] = useState([]);
+  const [user, setUser] = useState(null);
+  const [characterId, setCharacterId] = useState(null);
+  const [characters, setCharacters] = useState([]);
+  const [isProfileLoading, setIsProfileLoading] = useState(false);
+  const [isSelectingCharacter, setIsSelectingCharacter] = useState(false);
+  const [isCreatingCharacter, setIsCreatingCharacter] = useState(false);
+  const [loadError, setLoadError] = useState('');
+
   const classes = useMemo(() => {
     const merged = { ...classesData };
     classCatalog.forEach((cls) => {
@@ -78,35 +102,12 @@ export default function GrindQuest() {
   }, [deities]);
 
   const playerClass = classes[playerClassKey] || classesData[playerClassKey] || classesData.warrior;
-  const [level, setLevel] = useState(1);
-  const [xp, setXp] = useState(0);
   const baseMaxHp = playerClass.baseHp;
   const baseMaxMana = playerClass.baseMana;
   const [hp, setHp] = useState(baseMaxHp);
   const [maxHp, setMaxHp] = useState(baseMaxHp);
   const [mana, setMana] = useState(baseMaxMana);
   const [maxMana, setMaxMana] = useState(baseMaxMana);
-  const [copper, setCopper] = useState(0);
-  const [silver, setSilver] = useState(0);
-  const [gold, setGold] = useState(0);
-  const [platinum, setPlatinum] = useState(0);
-  const [mode, setMode] = useState('normal');
-  const [raceId, setRaceId] = useState(null);
-  const [deityId, setDeityId] = useState(null);
-  const [classCatalog, setClassCatalog] = useState([]);
-  const [races, setRaces] = useState([]);
-  const [deities, setDeities] = useState([]);
-  const [raceClassAllowed, setRaceClassAllowed] = useState([]);
-  const [deityClassAllowed, setDeityClassAllowed] = useState([]);
-  const [boundLevel, setBoundLevel] = useState(1);
-  const [leaderboard, setLeaderboard] = useState([]);
-  const [user, setUser] = useState(null);
-  const [characterId, setCharacterId] = useState(null);
-  const [characters, setCharacters] = useState([]);
-  const [isProfileLoading, setIsProfileLoading] = useState(false);
-  const [isSelectingCharacter, setIsSelectingCharacter] = useState(false);
-  const [isCreatingCharacter, setIsCreatingCharacter] = useState(false);
-  const [loadError, setLoadError] = useState('');
 
   const zoneEntries = Object.entries(zonesData);
   const initialZoneId = zoneEntries[0]?.[0] || '';
