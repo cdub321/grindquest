@@ -23,7 +23,7 @@ export function onAuthStateChange(callback) {
 export async function fetchCharacters(userId) {
   const { data, error } = await supabase
     .from('characters')
-    .select('id, name, class, class_id, race_id, deity_id, level, xp, zone_id, currency, created_at, mode')
+    .select('id, name, class, class_id, race_id, deity_id, level, xp, zone_id, currency, created_at, mode, str_base, sta_base, agi_base, dex_base, int_base, wis_base, cha_base')
     .eq('user_id', userId)
     .order('created_at', { ascending: true });
   if (error) throw error;
@@ -44,7 +44,14 @@ export async function createCharacter(userId, payload) {
       xp: 0,
       zone_id: payload.zone_id,
       currency: payload.currency,
-      mode: payload.mode || 'normal'
+      mode: payload.mode || 'normal',
+      str_base: payload.str_base || 0,
+      sta_base: payload.sta_base || 0,
+      agi_base: payload.agi_base || 0,
+      dex_base: payload.dex_base || 0,
+      int_base: payload.int_base || 0,
+      wis_base: payload.wis_base || 0,
+      cha_base: payload.cha_base || 0
     })
     .select('*')
     .single();
@@ -70,37 +77,64 @@ export async function loadCharacter(characterId) {
   if (charErr) throw charErr;
 
   const { data: inventoryRows, error: invErr } = await supabase
-    .from('inventory_items')
-    .select('*')
+    .from('inventory')
+    .select('id, base_item_id, quantity, slot_id, item_data, container_id, created_at')
     .eq('character_id', characterId);
   if (invErr) throw invErr;
 
-  const { data: equipRows, error: eqErr } = await supabase
-    .from('equipment_slots')
-    .select('*')
+  const { data: spellRows, error: spellErr } = await supabase
+    .from('character_spells')
+    .select('skill_id, scribe_slot, ability_slot, spell_slot, learned_at')
     .eq('character_id', characterId);
-  if (eqErr) throw eqErr;
+  if (spellErr) throw spellErr;
 
   const inventory = (inventoryRows || []).map((row) => ({
     id: row.id,
-    name: row.item_name,
-    slot: row.item_data?.slot,
-    bonuses: row.item_data?.bonuses || {},
-    quantity: row.quantity || 1
+    base_item_id: row.base_item_id,
+    quantity: row.quantity || 1,
+    slot_id: row.slot_id || null,
+    container_id: row.container_id || null,
+    item_data: row.item_data || null,
+    created_at: row.created_at || null
   }));
 
-  const equipment = {};
-  (equipRows || []).forEach((row) => {
-    equipment[row.slot] = {
-      id: row.id,
-      name: row.item_name,
-      slot: row.slot,
-      bonuses: row.item_data?.bonuses || {},
-      quantity: 1
-    };
+  return { character, inventory, spells: spellRows || [] };
+}
+
+// Update equipped slots for abilities/spells. Pass arrays of
+// { skill_id, ability_slot } and { skill_id, spell_slot } with 1-based slots.
+export async function saveSpellSlots(characterId, { abilitySlots = [], spellSlots = [] }) {
+  // Reset slots to 0 to avoid unique conflicts, then upsert the new assignments.
+  const { error: clearErr } = await supabase
+    .from('character_spells')
+    .update({ ability_slot: 0, spell_slot: 0 })
+    .eq('character_id', characterId);
+  if (clearErr) throw clearErr;
+
+  const rows = [];
+  abilitySlots.forEach(({ skill_id, ability_slot }) => {
+    if (!skill_id || !ability_slot) return;
+    rows.push({
+      character_id: characterId,
+      skill_id,
+      ability_slot
+    });
+  });
+  spellSlots.forEach(({ skill_id, spell_slot }) => {
+    if (!skill_id || !spell_slot) return;
+    rows.push({
+      character_id: characterId,
+      skill_id,
+      spell_slot
+    });
   });
 
-  return { character, inventory, equipment };
+  if (!rows.length) return;
+
+  const { error: upsertErr } = await supabase
+    .from('character_spells')
+    .upsert(rows, { onConflict: 'character_id,skill_id' });
+  if (upsertErr) throw upsertErr;
 }
 
 export async function saveCharacter(characterId, patch) {
@@ -113,7 +147,7 @@ export async function saveCharacter(characterId, patch) {
 
 export async function saveInventory(characterId, inventory) {
   const { error: delErr } = await supabase
-    .from('inventory_items')
+    .from('inventory')
     .delete()
     .eq('character_id', characterId);
   if (delErr) throw delErr;
@@ -122,38 +156,16 @@ export async function saveInventory(characterId, inventory) {
 
   const payload = inventory.map((item) => ({
     character_id: characterId,
-    item_name: item.name,
-    item_data: { slot: item.slot, bonuses: item.bonuses },
-    quantity: item.quantity || 1
+    slot_id: item.slot_id || item.slotId || null,
+    base_item_id: item.baseItemId || item.base_item_id || item.id || item.name,
+    quantity: item.quantity || 1,
+    item_data: item.item_data || item.itemData || null,
+    container_id: item.container_id || item.containerId || null
   }));
 
   const { error: insErr } = await supabase
-    .from('inventory_items')
+    .from('inventory')
     .insert(payload);
-  if (insErr) throw insErr;
-}
-
-export async function saveEquipment(characterId, equipment) {
-  const { error: delErr } = await supabase
-    .from('equipment_slots')
-    .delete()
-    .eq('character_id', characterId);
-  if (delErr) throw delErr;
-
-  const rows = Object.entries(equipment)
-    .filter(([, item]) => item)
-    .map(([slot, item]) => ({
-      character_id: characterId,
-      slot,
-      item_name: item.name,
-      item_data: { slot: item.slot, bonuses: item.bonuses }
-    }));
-
-  if (!rows.length) return;
-
-  const { error: insErr } = await supabase
-    .from('equipment_slots')
-    .insert(rows);
   if (insErr) throw insErr;
 }
 
