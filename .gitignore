@@ -23,3 +23,7 @@ dist-ssr
 *.sln
 *.sw?
 .env
+
+# Local Netlify folder
+.netlify
+/public/stone-ui/stone43m

@@ -65,15 +65,38 @@ export async function fetchSkillsCatalog() {
   return data || [];
 }
 
-export async function fetchZoneMobs() {
-  // Expects view zone_mobs_view with: zone_id, mob_id, name, hp, damage, xp, is_named, tags, ac, mr, fr, cr, pr, dr, loot_table
-  const { data, error } = await supabase.from('zone_mobs_view').select('*');
+export async function fetchLootTables() {
+  const { data, error } = await supabase.from('loot_tables').select('*');
+  if (error) throw error;
+  return data || [];
+}
+
+export async function fetchLootTableEntries() {
+  const { data, error } = await supabase.from('loot_table_entries').select('*');
+  if (error) throw error;
+  return data || [];
+}
+
+export async function fetchMobTemplates() {
+  const { data, error } = await supabase.from('mob_templates').select('*');
   if (error) throw error;
   return data || [];
 }
 
 export async function fetchCamps() {
   const { data, error } = await supabase.from('camps').select('*');
+  if (error) throw error;
+  return data || [];
+}
+
+export async function fetchZoneCamps() {
+  const { data, error } = await supabase.from('zone_camps').select('*');
+  if (error) throw error;
+  return data || [];
+}
+
+export async function fetchCampMembers() {
+  const { data, error } = await supabase.from('camp_members').select('*');
   if (error) throw error;
   return data || [];
 }

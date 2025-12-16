@@ -185,7 +185,7 @@ export default function CharacterPanel({
     { text: `STR ${bonuses.str || 0} || STA ${bonuses.sta || 0}` },
     { text: `AGI ${bonuses.agi || 0} || DEX ${bonuses.dex || 0}` },
     { text: `INT ${bonuses.int || 0} || WIS ${bonuses.wis || 0}` },
-    { text: `CHA ${bonuses.cha || 0} ||  AC ${bonuses.ac || 0}` },
+    { text: `CHA ${bonuses.cha || 0} || AC ${bonuses.ac || 0}` },
     { text: `MR ${bonuses.mr || 0} ||  FR ${bonuses.fr || 0}`, className: 'stone-attr__value--resists' },
     { text: `CR ${bonuses.cr || 0} || PR ${bonuses.pr || 0}` },
     { text: `DR ${bonuses.dr || 0} || Tot ${bonuses.totalResist || 0}`, className: 'stone-attr__value--resistsbot' },

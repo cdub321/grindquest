@@ -1,5 +1,0 @@
-{
-  "warrior": { "name": "Warrior", "baseDamage": 8, "baseHp": 120, "baseMana": 0, "attackSpeed": 1000, "isCaster": false, "runSpeed": 1.0 },
-  "wizard": { "name": "Wizard", "baseDamage": 15, "baseHp": 80, "baseMana": 200, "attackSpeed": 2500, "isCaster": true, "runSpeed": 1.1 },
-  "cleric": { "name": "Cleric", "baseDamage": 6, "baseHp": 100, "baseMana": 150, "attackSpeed": 1500, "isCaster": true, "runSpeed": 1.0 }
-}

@@ -23,7 +23,7 @@ export function onAuthStateChange(callback) {
 export async function fetchCharacters(userId) {
   const { data, error } = await supabase
     .from('characters')
-    .select('id, name, class, class_id, race_id, deity_id, level, xp, zone_id, currency, created_at, mode, str_base, sta_base, agi_base, dex_base, int_base, wis_base, cha_base')
+    .select('id, name, class, class_id, race_id, deity_id, level, xp, zone_id, currency, created_at, mode, str_base, sta_base, agi_base, dex_base, int_base, wis_base, cha_base, killed_at')
     .eq('user_id', userId)
     .order('created_at', { ascending: true });
   if (error) throw error;
@@ -143,6 +143,18 @@ export async function saveCharacter(characterId, patch) {
     .update(patch)
     .eq('id', characterId);
   if (error) throw error;
+}
+
+// Public leaderboard pulls top characters by mode
+export async function fetchLeaderboardCharacters(limit = 50) {
+  const { data, error } = await supabase
+    .from('characters')
+    .select('id, name, class, class_id, race_id, deity_id, level, xp, mode, killed_at')
+    .order('level', { ascending: false })
+    .order('xp', { ascending: false })
+    .limit(limit);
+  if (error) throw error;
+  return data || [];
 }
 
 export async function saveInventory(characterId, inventory) {

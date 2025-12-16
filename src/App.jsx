@@ -17,7 +17,8 @@ import {
   createCharacter,
   deleteCharacter,
   loadCharacter,
-  saveSpellSlots
+  saveSpellSlots,
+  fetchLeaderboardCharacters
 } from './services/playerStorage';
 import CharacterSelectPanel from './components/CharacterSelectPanel';
 import CharacterCreatePanel from './components/CharacterCreatePanel';
@@ -52,11 +53,12 @@ export default function GrindQuest() {
   const [raceId, setRaceId] = useState(null);
   const [deityId, setDeityId] = useState(null);
   const [boundLevel, setBoundLevel] = useState(1);
-  const [hardcoreLeaderboard, setHardcoreLeaderboard] = useState([]);
-  const [normalLeaderboard, setNormalLeaderboard] = useState([]);
+  const [leaderboardCharacters, setLeaderboardCharacters] = useState([]);
+  const [isLeaderboardLoading, setIsLeaderboardLoading] = useState(false);
   const [user, setUser] = useState(null);
   const [characterId, setCharacterId] = useState(null);
   const [characterName, setCharacterName] = useState('');
+  const [killedAt, setKilledAt] = useState(null);
   const [characters, setCharacters] = useState([]);
   const [baseStats, setBaseStats] = useState({
     str: 0,
@@ -200,28 +202,47 @@ export default function GrindQuest() {
   }, 0), [slots]);
 
   const xpNeeded = level * 100;
-  const currentRunEntry = useMemo(() => {
-    const progress = xpNeeded > 0 ? xp / xpNeeded : 0;
-    return {
-      name: characterName || 'Unknown',
-      level,
-      xp,
-      xpNeeded,
-      progress,
-      race: raceName || 'Unknown',
-      classId: playerClassKey,
-      className: classNameMap[playerClassKey] || playerClassKey,
-      deity: deityName || 'None',
-      mode,
-      timestamp: Date.now()
-    };
-  }, [characterName, classNameMap, deityName, level, mode, playerClassKey, raceName, xp, xpNeeded]);
-  const displayedNormalRuns = useMemo(() => {
-    return mode === 'normal' ? [currentRunEntry, ...normalLeaderboard] : normalLeaderboard;
-  }, [currentRunEntry, mode, normalLeaderboard]);
-  const displayedHardcoreRuns = useMemo(() => {
-    return mode === 'hardcore' ? [currentRunEntry, ...hardcoreLeaderboard] : hardcoreLeaderboard;
-  }, [currentRunEntry, hardcoreLeaderboard, mode]);
+  const isHardcoreDead = mode === 'hardcore' && Boolean(killedAt);
+
+  const blockIfHardcoreDead = (reason = 'act') => {
+    if (!isHardcoreDead) return false;
+    addLog(`You are dead and cannot ${reason}. Create a new hardcore character to continue.`, 'error');
+    return true;
+  };
+
+  const mapLeaderboardRows = useCallback(
+    (modeFilter) => {
+      const filtered = (leaderboardCharacters || []).filter(
+        (row) => (row.mode || '').toLowerCase() === modeFilter
+      );
+      return filtered
+        .map((row) => {
+          const raceName = raceMap[row.race_id]?.name || row.race || 'Unknown';
+          const className = classNameMap[row.class_id] || row.class || row.class_id || 'Unknown';
+          const deityName = row.deity_id ? deityMap[row.deity_id]?.name : row.deity || 'None';
+          const levelVal = Number(row.level) || 0;
+          const xpVal = Number(row.xp) || 0;
+          const xpPerLevel = Math.max(1, levelVal * 100);
+          const progress = xpVal / xpPerLevel;
+          return {
+            ...row,
+            race: raceName,
+            className,
+            deity: deityName,
+            progress
+          };
+        })
+        .sort((a, b) => {
+          const progA = (a.level || 0) + (a.progress || 0);
+          const progB = (b.level || 0) + (b.progress || 0);
+          return progB - progA;
+        });
+    },
+    [classNameMap, deityMap, leaderboardCharacters, raceMap]
+  );
+
+  const normalLeaderboard = useMemo(() => mapLeaderboardRows('normal'), [mapLeaderboardRows]);
+  const hardcoreLeaderboard = useMemo(() => mapLeaderboardRows('hardcore'), [mapLeaderboardRows]);
 
   const createItemInstance = (itemId) => {
     const data = items[itemId];
@@ -554,6 +575,7 @@ export default function GrindQuest() {
   }, [slotsRef]);
 
   const handleCampChange = useCallback((campId, zoneIdOverride = null) => {
+    if (blockIfHardcoreDead('change camps')) return;
     const zoneKey = zoneIdOverride || currentZoneId;
     const zoneCamps = campsByZone[zoneKey] || [];
     const camp = zoneCamps.find((c) => `${c.id}` === `${campId}`);
@@ -569,7 +591,7 @@ export default function GrindQuest() {
     setCurrentCampId(camp.id);
     setCurrentMob(null);
     setMobHp(0);
-  }, [campsByZone, currentZoneId, hasKeyItem]);
+  }, [blockIfHardcoreDead, campsByZone, currentZoneId, hasKeyItem]);
 
   useEffect(() => {
     if (!currentZoneId && initialZoneId) {
@@ -690,6 +712,7 @@ export default function GrindQuest() {
   };
 
   const changeZone = (zoneId) => {
+    if (blockIfHardcoreDead('travel')) return;
     if (!availableZoneIds.includes(zoneId)) {
       addLog('You cannot travel there directly from this zone.', 'error');
       return;
@@ -739,21 +762,6 @@ export default function GrindQuest() {
     if (isDeadRef.current) return;
     isDeadRef.current = true;
 
-    const progress = xpNeeded > 0 ? xp / xpNeeded : 0;
-    const runEntry = {
-      name: characterName || 'Unknown',
-      level,
-      xp,
-      xpNeeded,
-      progress,
-      race: raceName || 'Unknown',
-      classId: playerClassKey,
-      className: classNameMap[playerClassKey] || playerClassKey,
-      deity: deityName || 'None',
-      mode,
-      timestamp: Date.now()
-    };
-
     addLog(`You have been slain by ${killerName}!`, 'error');
     setInCombat(false);
     setIsSitting(false);
@@ -768,50 +776,37 @@ export default function GrindQuest() {
     setMobHp(0);
 
     if (mode === 'hardcore') {
-      setHardcoreLeaderboard(prev => {
-        const updated = [runEntry, ...prev];
-        return updated
-          .sort((a, b) => {
-            const aProg = a.level + (a.progress || 0);
-            const bProg = b.level + (b.progress || 0);
-            return bProg - aProg;
-          })
-          .slice(0, 10);
-      });
-      setLevel(1);
-      setXp(0);
-      setHp(playerClass.baseHp);
-      setMana(playerClass.baseMana);
-      setCopper(0);
-      setSilver(0);
-      setGold(0);
-      setPlatinum(0);
-      const emptied = Array(slotOrder.length).fill(null);
-      setSlots(emptied);
-      slotsRef.current = emptied;
+      const deathTime = new Date().toISOString();
+      setKilledAt(deathTime);
+      addLog('Hardcore death! This character is permanently dead.', 'system');
+      setCurrentZoneId(initialZoneId);
+      setCurrentCampId(null);
       scheduleSave({
         character: {
-          level: 1,
-          xp: 0,
-          zone_id: initialZoneId,
-          currency: { copper: 0, silver: 0, gold: 0, platinum: 0 }
-        },
-        inventory: true
+          killed_at: deathTime,
+          zone_id: initialZoneId
+        }
       });
-      setBoundLevel(1);
-      addLog('Hardcore death! Reset to level 1.', 'system');
-      addLog('Your run was added to the leaderboard.', 'system');
+      setLeaderboardCharacters((prev) => {
+        if (!characterId) return prev;
+        const filtered = (prev || []).filter((row) => row.id !== characterId);
+        return [
+          {
+            id: characterId,
+            name: characterName,
+            level,
+            xp,
+            mode,
+            race_id: raceId,
+            deity_id: deityId,
+            class_id: playerClassKey,
+            killed_at: deathTime,
+            updated_at: deathTime
+          },
+          ...filtered
+        ];
+      });
     } else {
-      setNormalLeaderboard(prev => {
-        const updated = [runEntry, ...prev];
-        return updated
-          .sort((a, b) => {
-            const aProg = a.level + (a.progress || 0);
-            const bProg = b.level + (b.progress || 0);
-            return bProg - aProg;
-          })
-          .slice(0, 10);
-      });
       setLevel(boundLevel);
       setXp(0);
       setHp(maxHp);
@@ -826,15 +821,37 @@ export default function GrindQuest() {
         },
         inventory: true
       });
+      setLeaderboardCharacters((prev) => {
+        if (!characterId) return prev;
+        const filtered = (prev || []).filter((row) => row.id !== characterId);
+        return [
+          {
+            id: characterId,
+            name: characterName,
+            level: boundLevel,
+            xp: 0,
+            mode,
+            race_id: raceId,
+            deity_id: deityId,
+            class_id: playerClassKey,
+            killed_at: null,
+            updated_at: new Date().toISOString()
+          },
+          ...filtered
+        ];
+      });
     }
 
     setTimeout(() => {
       isDeadRef.current = false;
-      spawnMob();
+      if (!isHardcoreDead) {
+        spawnMob();
+      }
     }, 1000);
   };
 
   const attackMob = () => {
+    if (blockIfHardcoreDead('attack')) return;
     if (!currentMob || mobHp <= 0) return;
 
     setInCombat(true);
@@ -885,11 +902,13 @@ export default function GrindQuest() {
   };
 
   const toggleAutoAttack = () => {
+    if (blockIfHardcoreDead('toggle auto-attack')) return;
     setIsAutoAttack(!isAutoAttack);
     addLog(isAutoAttack ? 'Auto-attack disabled' : 'Auto-attack enabled', 'system');
   };
 
   const fleeCombat = () => {
+    if (blockIfHardcoreDead('flee')) return;
     if (!currentMob) return;
 
     const applyFleeDebuff = () => {
@@ -995,6 +1014,8 @@ export default function GrindQuest() {
       setIsSelectingCharacter(false);
       setIsCreatingCharacter(false);
       setLoadError('');
+      setKilledAt(null);
+      setLeaderboardCharacters([]);
       return;
     }
 
@@ -1025,6 +1046,18 @@ export default function GrindQuest() {
     };
 
     loadCharacters();
+    const loadLeaderboard = async () => {
+      try {
+        setIsLeaderboardLoading(true);
+        const rows = await fetchLeaderboardCharacters();
+        setLeaderboardCharacters(rows || []);
+      } catch (err) {
+        console.error('Failed to load leaderboard', err);
+      } finally {
+        setIsLeaderboardLoading(false);
+      }
+    };
+    loadLeaderboard();
   }, [user]);
 
   useEffect(() => {
@@ -1040,6 +1073,7 @@ export default function GrindQuest() {
         setCharacterName(character.name || '');
         setPlayerClassKey(classKey);
         setMode(character.mode || 'normal');
+        setKilledAt(character.killed_at || null);
         setRaceId(character.race_id || null);
         setDeityId(character.deity_id || null);
         setLevel(character.level);
@@ -1367,6 +1401,7 @@ export default function GrindQuest() {
   };
 
   const handleUseSkill = (skill) => {
+    if (blockIfHardcoreDead('use skills')) return;
     if (!skill) return;
 
     if (builtInAbilityHandlers[skill.id]) {
@@ -1714,8 +1749,9 @@ export default function GrindQuest() {
               onCampChange={handleCampChange}
             />
             <HardcoreLeaderboard
-              hardcoreRuns={displayedHardcoreRuns}
-              normalRuns={displayedNormalRuns}
+              hardcoreRuns={hardcoreLeaderboard}
+              normalRuns={normalLeaderboard}
+              isLoading={isLeaderboardLoading}
             />
           </div>
         </div>

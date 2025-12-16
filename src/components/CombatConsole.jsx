@@ -11,6 +11,14 @@ export default function CombatConsole({
   knownAbilities = [],
   knownSpells = [],
   level = 1,
+  characterName = '',
+  hp,
+  maxHp,
+  mana,
+  maxMana,
+  endurance,
+  maxEndurance,
+  playerClass,
   onAssignAbility = () => {},
   onAssignSpell = () => {},
   onClearAbility = () => {},
@@ -109,6 +117,7 @@ export default function CombatConsole({
   while (totalSpellSlots.length < 9) totalSpellSlots.push(null);
   const totalAbilitySlots = [...abilitySlots];
   while (totalAbilitySlots.length < 9) totalAbilitySlots.push(null);
+  const displayPlayerName = (characterName || '').trim() || 'Unnamed';
 
   const primarySpellSlots = totalSpellSlots.slice(0, 6);
   const extraSpellSlots = totalSpellSlots.slice(6, 9);
@@ -126,7 +135,7 @@ export default function CombatConsole({
     if (diff >= -10) return { label: 'L. Blue', color: '#60a5fa' };
     return { label: 'Green', color: '#10b981' };
   };
-  const conInfo = getConInfo();
+  const con = getConInfo();
 
   const renderUseButton = (skill, onUse, onClear, isSpell = false) => {
     const until = skill ? (cooldowns[skill.id] || 0) : 0;
@@ -193,106 +202,96 @@ export default function CombatConsole({
                 Mob art placeholder
               </div>
 
-              <div className="console-mob__name" style={{ display: 'flex', justifyContent: 'center' }}>
-                <span
-                  className={currentMob.isNamed ? 'mob-name named' : 'mob-name'}
-                  style={{
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    gap: '8px',
-                    padding: '4px 8px',
-                    border: (() => {
-                      const con = getConInfo();
-                      return con ? `1px solid ${con.color}` : '1px solid rgba(255,255,255,0.2)';
-                    })(),
-                    borderRadius: '4px'
-                  }}
-                >
-                  {currentMob.name}
-                  {currentMob.isNamed && <span className="mob-tag">NAMED</span>}
-                </span>
-              </div>
-
-              <div className="console-bar">
-                <div className="console-bar__label">
-                  <span>HP</span>
-                  <span>{mobHp} / {currentMob.hp}</span>
-                </div>
-                <div className="console-bar__track">
-                  <div
-                    className="console-bar__fill"
-                    style={{ width: `${Math.max(0, Math.min(100, (mobHp / currentMob.hp) * 100))}%` }}
-                  />
-                </div>
-              </div>
-
-              {currentMob && (currentMob.mana || currentMob.endurance) ? (() => {
-                const hasMana = currentMob.mana && currentMob.mana > 0;
-                const maxVal = hasMana ? currentMob.mana : currentMob.endurance || 0;
-                const label = hasMana ? 'Mana' : 'Endurance';
-                const currentVal = maxVal; // placeholder until mob resource spend is implemented
-                const pct = maxVal > 0 ? Math.max(0, Math.min(100, (currentVal / maxVal) * 100)) : 0;
-                const barColor = hasMana ? '#3b82f6' : '#f59e0b';
-                return (
-                  <div className="console-bar">
-                    <div className="console-bar__label">
-                      <span>{label}</span>
-                      <span>{currentVal} / {maxVal}</span>
-                    </div>
-                    <div className="console-bar__track">
-                      <div
-                        className="console-bar__fill"
-                        style={{ width: `${pct}%`, background: `linear-gradient(90deg, ${barColor}, ${barColor})` }}
-                      />
-                    </div>
+              <div
+                style={{
+                  border: con ? `1px solid ${con.color}` : '1px solid rgba(255,255,255,0.2)',
+                  borderRadius: 8,
+                  padding: '6px',
+                  display: 'grid',
+                  gap: '6px'
+                }}
+              >
+                <div className="console-bar">
+                  <div className="console-bar__label">
+                    <span>
+                      {currentMob.name}
+                      {currentMob.isNamed && <span className="mob-tag" style={{ marginLeft: 6 }}>NAMED</span>}
+                    </span>
+                    <span>{mobHp} / {currentMob.hp}</span>
                   </div>
-                );
-              })() : null}
+                  <div className="console-bar__track">
+                    <div
+                      className="console-bar__fill"
+                      style={{ width: `${Math.max(0, Math.min(100, (mobHp / currentMob.hp) * 100))}%` }}
+                    />
+                  </div>
+                </div>
+
+                {currentMob && (currentMob.mana || currentMob.endurance) ? (() => {
+                  const hasMana = currentMob.mana && currentMob.mana > 0;
+                  const maxVal = hasMana ? currentMob.mana : currentMob.endurance || 0;
+                  const label = hasMana ? 'Mana' : 'Endurance';
+                  const currentVal = maxVal; // placeholder until mob resource spend is implemented
+                  const pct = maxVal > 0 ? Math.max(0, Math.min(100, (currentVal / maxVal) * 100)) : 0;
+                  const barColor = hasMana ? '#3b82f6' : '#f59e0b';
+                  return (
+                    <div className="console-bar">
+                      <div className="console-bar__track">
+                        <div
+                          className="console-bar__fill"
+                          style={{ width: `${pct}%`, background: `linear-gradient(90deg, ${barColor}, ${barColor})` }}
+                        />
+                      </div>
+                    </div>
+                  );
+                })() : null}
+
+                <div style={{ display: 'flex', gap: '12px', alignItems: 'center', justifyContent: 'center', flexWrap: 'nowrap', fontSize: 10 }}>
+                  <div style={{ textAlign: 'center' }}>
+                    <div style={{ fontSize: 10, color: '#c2b59b' }}>DMG</div>
+                    <div style={{ fontWeight: 700, fontSize: 11 }}>{currentMob.damage} {currentMob.delay ? `(Delay ${currentMob.delay})` : ''}</div>
+                  </div>
+                  <div style={{ textAlign: 'center' }}>
+                    <div style={{ fontSize: 10, color: '#c2b59b' }}>DMG Type</div>
+                    <div style={{ fontWeight: 700, fontSize: 11 }}>{currentMob.damage_type || 'Physical'}</div>
+                  </div>
+                </div>
+              </div>
 
               <div
                 style={{
-                  background: 'rgba(0,0,0,0.25)',
-                  border: '1px solid rgba(255,255,255,0.06)',
-                  borderRadius: '8px',
-                  padding: '10px',
+                  border: '1px solid rgba(255,255,255,0.15)',
+                  borderRadius: 8,
+                  padding: '6px',
                   display: 'grid',
-                  gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))',
-                  gap: '8px',
-                  color: '#f5e9d7'
+                  gap: '4px'
                 }}
               >
-                <div style={{ display: 'flex', gap: '16px', alignItems: 'center', justifyContent: 'center', flexWrap: 'nowrap' }}>
-                  <div>
-                    <div style={{ fontSize: 11, color: '#c2b59b' }}>DMG</div>
-                    <div style={{ fontWeight: 700 }}>{currentMob.damage} {currentMob.delay ? `(Delay ${currentMob.delay})` : ''}</div>
+                <div className="console-bar">
+                  <div className="console-bar__label">
+                    <span>{displayPlayerName}</span>
+                    <span>{hp} / {maxHp}</span>
                   </div>
-                  <div>
-                    <div style={{ fontSize: 11, color: '#c2b59b' }}>DMG Type</div>
-                    <div style={{ fontWeight: 700 }}>{currentMob.damage_type || 'Physical'}</div>
-                  </div>
-                </div>
-                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-                  <div style={{ fontSize: 11, color: '#c2b59b' }}>Resists</div>
-                  <div style={{ fontSize: 11, display: 'flex', gap: '6px', flexWrap: 'wrap', justifyContent: 'center' }}>
-                    <span>MR {currentMob.mr ?? 0}</span>
-                    <span>FR {currentMob.fr ?? 0}</span>
-                    <span>CR {currentMob.cr ?? 0}</span>
-                    <span>PR {currentMob.pr ?? 0}</span>
-                    <span>DR {currentMob.dr ?? 0}</span>
+                  <div className="console-bar__track">
+                    <div
+                      className="console-bar__fill"
+                      style={{ width: `${Math.max(0, Math.min(100, (hp / maxHp) * 100))}%` }}
+                    />
                   </div>
                 </div>
-                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-                  <div style={{ fontSize: 11, color: '#c2b59b' }}>Stats</div>
-                  <div style={{ fontSize: 12, display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0,1fr))', gap: '2px 6px', justifyItems: 'center' }}>
-                    <span>STR {currentMob.str ?? 0}</span>
-                    <span>STA {currentMob.sta ?? 0}</span>
-                    <span>AGI {currentMob.agi ?? 0}</span>
-                    <span>DEX {currentMob.dex ?? 0}</span>
-                    <span>INT {currentMob.int ?? 0}</span>
-                    <span>WIS {currentMob.wis ?? 0}</span>
-                    <span>CHA {currentMob.cha ?? 0}</span>
-                    <span>AC {currentMob.ac ?? 0}</span>
+                <div className="console-bar">
+                  <div className="console-bar__label">
+                    <span>{playerClass.isCaster ? 'Mana' : 'Endurance'}</span>
+                    <span>{playerClass.isCaster ? `${mana} / ${maxMana}` : `${endurance} / ${maxEndurance}`}</span>
+                  </div>
+                  <div className="console-bar__track">
+                    <div
+                      className="console-bar__fill"
+                      style={{
+                        width: `${Math.max(0, Math.min(100, (playerClass.isCaster ? (mana / maxMana) : (endurance / maxEndurance)) * 100))}%`,
+                        background: playerClass.isCaster ? 'linear-gradient(90deg, #3b82f6, #3b82f6)' : 'linear-gradient(90deg, #f59e0b, #f59e0b)'
+                      }}
+                    />
                   </div>
                 </div>
               </div>
