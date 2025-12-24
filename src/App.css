@@ -1,3 +1,44 @@
+@import url('https://fonts.googleapis.com/css2?family=DotGothic16&display=swap');
+
+:root {
+  /* --- Palette --- */
+  --c-text-main: #f5e9d7;
+  --c-text-muted: #c9bba2; /* Also covers text-gray-300/400/500 */
+  --c-text-gold: #d6c18a;
+  --c-text-header: #d6c18a;
+  
+  --c-bg-body: #0d0b0a;
+  --c-bg-panel: rgba(33, 29, 26, 0.9);
+  --c-bg-inset: rgba(0, 0, 0, 0.25);
+  --c-bg-slot: rgba(0, 0, 0, 0.35);
+
+  /* --- Borders --- */
+  --c-border-stone: #ffd56a;
+  --c-border-light: rgba(255, 255, 255, 0.06);
+  --c-border-highlight: rgba(255, 255, 255, 0.08);
+
+  /* --- Assets --- */
+  --bg-stone-tex: url('/stone-ui/ui/bg-stone.png');
+  --bg-stone-light-tex: url('/stone-ui/ui/bg-stone-light.png');
+
+  /* --- Dimensions --- */
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+}
+
+/* --- Layout Base --- */
+body {
+  margin: 0;
+  background-color: var(--c-bg-body);
+  background-image:
+    linear-gradient(180deg, rgba(12, 9, 8, 0.8), rgba(18, 14, 12, 0.9)),
+    var(--bg-stone-tex);
+  background-repeat: repeat;
+  color: var(--c-text-main);
+  font-family: "Book Antiqua", "Palatino", "Times New Roman", serif;
+}
+
 #root {
   max-width: 1280px;
   margin: 0 auto;
@@ -13,28 +54,66 @@
   margin: 0 auto;
 }
 
-.eq-icon {
-  width: var(--eq-icon-size, 32px);
-  height: var(--eq-icon-size, 32px);
-  background-repeat: no-repeat;
-  background-size: calc(var(--eq-icon-size, 32px) * var(--eq-icon-cols, 6))
-    calc(var(--eq-icon-size, 32px) * var(--eq-icon-cols, 6));
-  background-position: calc(-1 * var(--eq-icon-col, 0) * var(--eq-icon-size, 32px) + 5px)
-    calc(-1 * var(--eq-icon-row, 0) * var(--eq-icon-size, 32px));
-}
-
-/* Stone UI theme */
-body {
-  margin: 0;
-  background-color: #0d0b0a;
+/* --- Shared Utility: Stone Panels --- */
+/* Replaces .console, .stone-card, .bg-slate-800 */
+.console,
+.stone-card,
+.bg-slate-800 {
+  background-color: var(--c-bg-panel) !important; /* !important kept only for tailwind override if needed */
   background-image:
-    linear-gradient(180deg, rgba(12, 9, 8, 0.8), rgba(18, 14, 12, 0.9)),
-    url('/stone-ui/ui/bg-stone.png');
-  background-repeat: repeat;
-  color: #f5e9d7;
-  font-family: "Book Antiqua", "Palatino", "Times New Roman", serif;
+    linear-gradient(135deg, rgba(82, 68, 52, 0.2), rgba(30, 25, 22, 0.5)),
+    var(--bg-stone-light-tex);
+  background-size: 100% 100%, 128px 128px;
+  background-repeat: no-repeat, repeat;
+  border: 1px solid var(--c-border-stone) !important;
+  box-shadow: 
+    inset 0 1px 0 rgba(255, 255, 255, 0.04), 
+    0 4px 12px rgba(0, 0, 0, 0.45);
+  border-radius: var(--radius-lg);
+  color: var(--c-text-main);
+  padding: 12px; 
 }
 
+/* --- Shared Utility: Dark Insets --- */
+/* Replaces .console-mob, .console-skills, .stone-inventory, .console-log */
+.console-mob,
+.console-skills,
+.stone-inventory,
+.console-log {
+  background: var(--c-bg-inset);
+  border: 1px solid var(--c-border-light);
+  border-radius: var(--radius-md);
+  padding: 10px;
+}
+
+/* --- Icons --- */
+.eq-icon {
+  --size: var(--eq-icon-size, 32px); /* legacy square size */
+  --size-x: var(--eq-icon-size-x, var(--size)); /* display width */
+  --size-y: var(--eq-icon-size-y, var(--size)); /* display height */
+  --step-x: var(--eq-icon-step-x, var(--size-x)); /* sprite cell width */
+  --step-y: var(--eq-icon-step-y, var(--size-y)); /* sprite cell height */
+  --cols: var(--eq-icon-cols, 6);
+  --rows: var(--eq-icon-rows, var(--cols));
+  --offset-x: var(--eq-icon-offset-x, 0px);
+  --offset-y: var(--eq-icon-offset-y, 0px);
+  
+  width: var(--size-x);
+  height: var(--size-y);
+  background-repeat: no-repeat;
+  background-size: calc(var(--step-x) * var(--cols)) calc(var(--step-y) * var(--rows));
+  background-position: 
+    calc(-1 * var(--eq-icon-col, 0) * var(--step-x) + var(--offset-x))
+    calc(-1 * var(--eq-icon-row, 0) * var(--step-y) + var(--offset-y));
+}
+
+.gem-icon-wrap {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* --- Header Section --- */
 .head {
   display: grid;
   grid-template-columns: 1fr auto 1fr;
@@ -44,24 +123,24 @@ body {
   margin-bottom: 16px;
 }
 
+.head-left {
+  grid-column: 2;
+  text-align: center;
+  justify-self: center;
+}
+
 .head-left h1 {
   margin: 0;
   font-size: 42px;
   letter-spacing: 1px;
-  color: #d6c18a;
+  color: var(--c-text-header);
   text-shadow: 0 2px 6px rgba(117, 117, 117, 0.6);
 }
 
 .head-left p {
   margin: 4px 0 0;
-  color: #d6c18a;
+  color: var(--c-text-header);
   font-size: 15px;
-}
-
-.head-left {
-  grid-column: 2;
-  text-align: center;
-  justify-self: center;
 }
 
 .head-actions {
@@ -75,42 +154,52 @@ body {
   grid-column: 3;
 }
 
-.head-actions .btn {
-  padding: 6px 14px;
-  font-size: 12px;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
+/* --- Buttons --- */
+.btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  background-image: url('/stone-ui/ui/bg-stone.png');
-  background-size: cover;
-  color: #f5e9d7;
-  border: 1px solid rgba(255, 255, 255, 0.15);
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.45);
-  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6);
   height: 34px;
-  border-radius: 8px;
+  padding: 6px 14px;
+  
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--c-text-main) !important;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6);
+  
+  /* Stone Look Default */
+  background-color: #3c322a;
+  background-image: var(--bg-stone-tex);
+  background-size: cover;
+  border: 1px solid #6c5742;
+  border-radius: var(--radius-md);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.45);
+  cursor: pointer;
+  transition: filter 0.2s;
 }
 
-.btn {
+.btn:hover { filter: brightness(1.1); }
+
+/* Button Variants */
+.btn.danger  { background-color: #b22222; border-color: #7a1717; }
+.btn.success { background-color: #2f7a3d; border-color: #1f5a2a; }
+.btn.warn    { background-color: #b0891d; border-color: #7a5f14; }
+.btn.primary { background-color: #2f4a74; border-color: #22385a; }
+.btn.pressed { background-color: #1f2f4a; border-color: #16243a; }
+.bg-blue-600 { /* Specific override class */
+  background: linear-gradient(180deg, #6b94c9, #3d5a85) !important;
+  border: 1px solid #2f4a74 !important;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
+}
+.bg-slate-700 { /* Matching default btn look */
   background-color: #3c322a !important;
   border: 1px solid #6c5742 !important;
-  color: #f5e9d7 !important;
+  color: var(--c-text-main);
 }
 
+/* --- Console Area --- */
 .console {
-  background: rgba(33, 29, 26, 0.9);
-  background-image:
-    linear-gradient(135deg, rgba(82, 68, 52, 0.2), rgba(30, 25, 22, 0.5)),
-    url('/stone-ui/ui/bg-stone.png');
-  background-size: 100% 100%, 128px 128px;
-  background-repeat: no-repeat, repeat;
-  border: 2px solid #5b4937;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04), 0 4px 12px rgba(0, 0, 0, 0.45);
-  border-radius: 12px;
-  padding: 12px;
-  color: #f5e9d7;
   display: flex;
   flex-direction: column;
   gap: 10px;
@@ -122,18 +211,10 @@ body {
   gap: 10px;
 }
 
-.console-mob,
-.console-skills {
-  background: rgba(0, 0, 0, 0.25);
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  border-radius: 8px;
-  padding: 10px;
-}
-
 .console-title {
   font-size: 14px;
   letter-spacing: 0.5px;
-  color: #d6c18a;
+  color: var(--c-text-gold);
   margin-bottom: 6px;
 }
 
@@ -144,13 +225,8 @@ body {
   margin-bottom: 6px;
 }
 
-.mob-name {
-  font-weight: 700;
-}
-
-.mob-name.named {
-  color: #f4e06d;
-}
+.mob-name { font-weight: 700; }
+.mob-name.named { color: #f4e06d; }
 
 .mob-tag {
   font-size: 10px;
@@ -161,10 +237,7 @@ body {
   border: 1px solid rgba(255, 255, 255, 0.1);
 }
 
-.console-bar {
-  margin-bottom: 8px;
-}
-
+.console-bar { margin-bottom: 4px; }
 .console-bar__label {
   display: flex;
   justify-content: space-between;
@@ -177,8 +250,9 @@ body {
   width: 100%;
   height: 10px;
   background: rgba(0, 0, 0, 0.4);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid var(--c-border-highlight);
   border-radius: 6px;
+  position: relative;
   overflow: hidden;
 }
 
@@ -193,36 +267,12 @@ body {
   gap: 6px;
 }
 
-.btn.danger {
-  background: #b22222 !important;
-  border-color: #7a1717 !important;
-}
-
-.btn.success {
-  background: #2f7a3d !important;
-  border-color: #1f5a2a !important;
-}
-
-.btn.warn {
-  background: #b0891d !important;
-  border-color: #7a5f14 !important;
-}
-
-.btn.primary {
-  background: #2f4a74 !important;
-  border-color: #22385a !important;
-}
-
-.btn.pressed {
-  background: #1f2f4a !important;
-  border-color: #16243a !important;
-}
-
 .console-empty {
   font-size: 12px;
-  color: #c2b59b;
+  color: var(--c-text-muted);
 }
 
+/* --- Spellbook & Skills --- */
 .spellbook {
   display: flex;
   gap: 12px;
@@ -232,7 +282,7 @@ body {
 .spellbook-section {
   flex: 1;
   background: rgba(0, 0, 0, 0.2);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid var(--c-border-highlight);
   border-radius: 6px;
   padding: 6px;
 }
@@ -247,70 +297,48 @@ body {
   width: 100%;
   text-align: left;
   background: rgba(0, 0, 0, 0.3);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid var(--c-border-highlight);
   border-radius: 4px;
-  color: #f5e9d7;
+  color: var(--c-text-main);
   padding: 6px;
   display: flex;
   justify-content: space-between;
   font-size: 12px;
 }
+.spellbook-item:hover { background: rgba(255, 255, 255, 0.05); }
+.spellbook-meta { color: var(--c-text-muted); font-size: 11px; }
 
-.spellbook-item:hover {
-  background: rgba(255, 255, 255, 0.05);
+/* --- Slots (Unified) --- */
+.hotkey-slot,
+.spell-slot,
+.stone-slot {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  background-repeat: no-repeat;
+  background-size: cover;
+  border: 1px solid var(--c-border-highlight); /* Default border */
 }
 
-.spellbook-meta {
-  color: #c2b59b;
-  font-size: 11px;
-}
+.hotkey-slot:disabled,
+.spell-slot:disabled { opacity: 0.6; }
 
+/* Hotkey Specifics */
 .hotkey-grid {
   display: grid;
   grid-template-columns: repeat(3, 48px);
   grid-template-rows: repeat(3, 48px);
   gap: 4px;
 }
-
-.hotkey-row {
-  display: flex;
-  gap: 4px;
-  margin-bottom: 4px;
-}
-
-.caster-wrap {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.spell-row {
-  display: grid;
-  grid-template-rows: repeat(6, 48px);
-  gap: 4px;
-}
-
 .hotkey-slot {
   width: 48px;
   height: 48px;
-  background-repeat: no-repeat;
-  background-size: cover;
-  border: none;
+  border: none; /* Override default */
   padding: 4px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  position: relative;
-  color: #f5e9d7;
+  color: var(--c-text-main);
 }
-
-.hotkey-slot:disabled {
-  opacity: 0.6;
-}
-
-.hotkey-slot.has-skill:active {
-  background-image: url('/stone-ui/ui/hotkeydown.png') !important;
-}
+.hotkey-slot.has-skill:active { background-image: url('/stone-ui/ui/hotkeydown.png') !important; }
 
 .hotkey-slot__cd {
   position: absolute;
@@ -321,23 +349,6 @@ body {
   background: rgba(255, 255, 255, 0.7);
   padding: 2px 4px;
   border-radius: 4px;
-}
-
-.spell-slot {
-  width: 64px;
-  height: 64px;
-  background-repeat: no-repeat;
-  background-size: cover;
-  border: none;
-  padding: 4px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  position: relative;
-}
-
-.spell-slot:disabled {
-  opacity: 0.6;
 }
 
 .hotkey-slot__label {
@@ -353,29 +364,85 @@ body {
   text-overflow: ellipsis;
 }
 
-.skill-name {
-  font-size: 13px;
-  font-weight: 600;
+/* Core combat actions (attack/ranged/sit/meditate) */
+.hotkey-slot--core {
+  height: 24px;
+  padding: 2px 4px;
+}
+.hotkey-slot--core .hotkey-slot__label {
+  font-size: 9px;
+  bottom: 1px;
 }
 
-.skill-meta {
+/* Spell Row Specifics */
+.caster-wrap {
   display: flex;
-  justify-content: space-between;
-  font-size: 11px;
-  color: #c2b59b;
+  flex-direction: column;
+  gap: 4px;
+}
+.spell-row {
+  display: grid;
+  grid-template-rows: repeat(6, 48px);
+  gap: 4px;
+}
+.spell-slot {
+  width: 64px;
+  height: 64px;
+  border: none; /* Override default */
+  padding: 4px;
 }
 
-.skill-type {
-  text-transform: capitalize;
+/* Stone Slot Specifics (Inventory) */
+.stone-slot {
+  background: var(--c-bg-slot);
+  border-radius: 4px;
+  width: 38px;
+  height: 38px;
+  color: #f7edd9;
+  font-size: 8px;
+  text-align: center;
+  transition: all 0.2s ease;
+}
+.stone-slot:hover {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: rgba(255, 255, 255, 0.15);
+}
+.stone-slot--selected {
+  background: rgba(139, 92, 246, 0.2) !important;
+  border: 2px solid rgba(139, 92, 246, 0.8) !important;
+  box-shadow: 0 0 8px rgba(139, 92, 246, 0.5);
+}
+.stone-slot__ghost { color: rgba(247, 237, 217, 0.35); }
+.stone-slot__icon-wrap {
+  position: relative;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.stone-slot__qty {
+  position: absolute;
+  bottom: -2px;
+  right: -2px;
+  background: rgba(0, 0, 0, 0.8);
+  color: #d1d5db;
+  border-radius: 5px;
+  font-size: 8px;
 }
 
-.console-log {
-  background: rgba(0, 0, 0, 0.25);
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  border-radius: 8px;
-  padding: 5px;
+.hotkey-row {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 4px;
 }
 
+.skill-name { font-size: 13px; font-weight: 600; }
+.skill-meta { display: flex; justify-content: space-between; font-size: 11px; color: var(--c-text-muted); }
+.skill-type { text-transform: capitalize; }
+
+/* --- Console Log --- */
+.console-log { padding: 5px; } /* Override default padding */
 .console-log__window {
   background: rgba(0, 0, 0, 0.25);
   border: 10px solid transparent;
@@ -390,10 +457,7 @@ body {
   line-height: 1.1;
 }
 
-.log-line {
-  margin-bottom: .5px;
-}
-
+.log-line { margin-bottom: .5px; }
 .log-damage { color: #ff0000; font-weight: 400;}
 .log-kill { color: #000000; font-weight: 400;}
 .log-xp { color: #fbff04; font-weight: 700;}
@@ -406,46 +470,15 @@ body {
 .log-error { color: #7a1e1e; font-weight: 400;}
 .log-normal { color: #0b0b0b; font-weight: 400;}
 
-/* Override common panel/button shades to stone look */
-.bg-slate-800 {
-  background-color: rgba(33, 29, 26, 0.9) !important;
-  background-image:
-    linear-gradient(135deg, rgba(82, 68, 52, 0.2), rgba(30, 25, 22, 0.5)),
-    url('/stone-ui/ui/bg-stone-light.png');
-  background-size: 100% 100%, 128px 128px;
-  background-repeat: no-repeat, repeat;
-  border: 2px solid #5b4937 !important;
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.04),
-    0 4px 12px rgba(0, 0, 0, 0.45);
-  border-radius: 10px;
-  color: #f5e9d7;
-}
-
-.bg-slate-700 {
-  background-color: #3c322a !important;
-  border: 1px solid #6c5742 !important;
-  color: #f5e9d7;
-}
-
-/* Mobile tweaks to keep header readable */
+/* --- Mobile --- */
 @media (max-width: 640px) {
   .head {
-    display: grid;
     grid-template-columns: 1fr;
     justify-items: center;
     gap: 8px;
   }
-
-  .head-left {
-    width: auto;
-    grid-column: 1;
-  }
-
-  .head-left h1 {
-    font-size: 32px;
-  }
-
+  .head-left { width: auto; grid-column: 1; }
+  .head-left h1 { font-size: 32px; }
   .head-actions {
     grid-column: 1;
     justify-self: center;
@@ -455,11 +488,7 @@ body {
     justify-content: center;
     gap: 6px;
   }
-
-  .head-actions .btn {
-    flex: 0 0 auto;
-    min-width: 90px;
-  }
+  .head-actions .btn { flex: 0 0 auto; min-width: 90px; }
 }
 
 .text-gray-300,
@@ -468,72 +497,19 @@ body {
   color: #d4c7af !important;
 }
 
-.bg-blue-600 {
-  background: linear-gradient(180deg, #6b94c9, #3d5a85) !important;
-  border: 1px solid #2f4a74 !important;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
-}
+/* --- Character Panel / Stone Card Specifics --- */
+.stone-card { padding: 8px 8px; } /* Tweak padding for card vs console */
+.stone-card__name { font-size: 18px; font-weight: 700; color: #f7edd9; letter-spacing: 0.4px; }
+.stone-stats-header .stone-card__name { text-align: center; width: 100%; }
+.stone-card__meta { text-align: center; width: 100%; color: #e9dec6; font-size: 13px; letter-spacing: 0.2px; }
 
-/* Character panel styling */
-.stone-card {
-  background: rgba(33, 29, 26, 0.9);
-  border: 2px solid #5b4937;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04), 0 4px 12px rgba(0, 0, 0, 0.45);
-  border-radius: 12px;
-  padding: 8px 8px;
-  color: #f5e9d7;
-  background-image:
-    linear-gradient(135deg, rgba(82, 68, 52, 0.2), rgba(30, 25, 22, 0.5)),
-    url('/stone-ui/ui/bg-stone-light.png');
-  background-size: 100% 100%, 128px 128px;
-  background-repeat: no-repeat, repeat;
-}
-
-.stone-card__name {
-  font-size: 18px;
-  font-weight: 700;
-  color: #f7edd9;
-  letter-spacing: 0.4px;
-}
-
-.stone-stats-header .stone-card__name {
-  text-align: center;
-  width: 100%;
-}
-
-.stone-card__meta {
-  text-align: center;
-  width: 100%;
-  color: #e9dec6;
-  font-size: 13px;
-  letter-spacing: 0.2px;
-}
-
-.stone-block {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.stone-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  font-size: 14px;
-  gap: 16px;
-}
-
-.stone-row--tight {
-  margin-bottom: 4px;
-}
-
-.stone-row--effects {
-  gap: 10px;
-  align-items: flex-start;
-}
+.stone-block { display: flex; flex-direction: column; gap: 2px; }
+.stone-row { display: flex; justify-content: space-between; align-items: center; font-size: 14px; gap: 16px; }
+.stone-row--tight { margin-bottom: 4px; }
+.stone-row--effects { gap: 10px; align-items: flex-start; }
 
 .stone-label {
-  color: #c9bba2;
+  color: var(--c-text-muted);
   text-transform: uppercase;
   letter-spacing: 0.4px;
   font-size: 12px;
@@ -553,7 +529,6 @@ body {
   align-items: center;
   line-height: 1.2;
 }
-
 .stone-value.plat { color: #e3e3e3; }
 .stone-value.gold { color: #e4c26b; }
 .stone-value.silver { color: #c7d1e4; }
@@ -585,17 +560,8 @@ body {
   border-radius: 4px;
 }
 
-.stone-attr__label {
-  color: #c9bba2;
-  font-size: 13px;
-  letter-spacing: 0.3px;
-}
-
-.stone-attr__value {
-  color: #f7edd9;
-  font-size: 13px;
-  text-align: right;
-}
+.stone-attr__label { color: var(--c-text-muted); font-size: 13px; letter-spacing: 0.3px; }
+.stone-attr__value { color: #f7edd9; font-size: 13px; text-align: right; }
 
 .stone-attr__row--stacked {
   flex-direction: column;
@@ -603,17 +569,9 @@ body {
   gap: 2px;
   padding: 5px 5px;
 }
+.stone-attr__row--stacked .stone-attr__value { text-align: center; }
 
-.stone-attr__row--stacked .stone-attr__value {
-  text-align: center;
-}
-
-.stone-attr__stack {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  width: 100%;
-}
+.stone-attr__stack { display: flex; flex-direction: column; gap: 2px; width: 100%; }
 
 .stone-attr__value--line {
   display: block;
@@ -623,23 +581,9 @@ body {
   color: #fdc75b;
   opacity: 0.9;
 }
-
-.stone-attr__value--resists {
-  margin-top: 1px;
-  padding: 1px;
-  border-top: 1px solid rgba(255, 255, 255, 0.08);
-}
-
-.stone-attr__value--resistsbot {
-  margin-top: 1px;
-  padding: 1px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-}
-
-.stone-attr__value--mods {
-  text-align: center;
-  margin-top: 6px;
-}
+.stone-attr__value--resists { margin-top: 1px; padding: 1px; border-top: 1px solid var(--c-border-highlight); }
+.stone-attr__value--resistsbot { margin-top: 1px; padding: 1px; border-bottom: 1px solid var(--c-border-highlight); }
+.stone-attr__value--mods { text-align: center; margin-top: 6px; }
 
 .stone-stats {
   grid-column: 3;
@@ -649,101 +593,27 @@ body {
   gap: 3px;
 }
 
-
 .stone-regen {
   font-size: 12px;
   color: rgba(255, 255, 255, 0.65);
   margin-left: 6px;
 }
-
-.stone-regen--debuff {
-  color: #f87171;
-}
+.stone-regen--debuff { color: #f87171; }
 
 .stone-inventory {
-  background: rgba(0, 0, 0, 0.25);
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  border-radius: 3px;
-  padding: 3px;
   display: flex;
   flex-direction: column;
   gap: 2px;
   width: 100%;
 }
+.stone-inventory__title { font-size: 12px; color: var(--c-text-muted); letter-spacing: 0.3px; }
+.stone-inventory-grid { display: grid; grid-template-columns: repeat(5, .1fr); gap: 1px; }
 
-.stone-inventory__title {
-  font-size: 12px;
-  color: #c9bba2;
-  letter-spacing: 0.3px;
-}
+.stone-money .stone-value { position: relative; top: -3px; }
 
-.stone-inventory-grid {
-  display: grid;
-  grid-template-columns: repeat(5, .1fr);
-  gap: 1px;
-}
-
-.stone-slot {
-  background: rgba(0, 0, 0, 0.35);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 4px;
-  width: 38px;
-  height: 38px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: #f7edd9;
-  font-size: 8px;
-  text-align: center;
-}
-
-.stone-slot__ghost {
-  color: rgba(247, 237, 217, 0.35);
-}
-
-.stone-slot__icon-wrap {
-  position: relative;
-  width: 32px;
-  height: 32px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.stone-slot__qty {
-  position: absolute;
-  bottom: -2px;
-  right: -2px;
-  background: rgba(0, 0, 0, 0.8);
-  color: #d1d5db;
-  border-radius: 5px;
-  font-size: 8px;
-}
-
-.stone-money .stone-value {
-  position: relative;
-  top: -3px;
-}
-
-.stone-effects {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.stone-effects__label {
-  font-size: 12px;
-  text-transform: uppercase;
-  letter-spacing: 0.4px;
-  color: #c2b59b;
-}
-
-.stone-effects__icons {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  min-height: 28px;
-}
+.stone-effects { display: flex; flex-direction: column; gap: 6px; }
+.stone-effects__label { font-size: 12px; text-transform: uppercase; letter-spacing: 0.4px; color: var(--c-text-muted); }
+.stone-effects__icons { display: flex; flex-wrap: wrap; gap: 6px; min-height: 28px; }
 
 .stone-effect {
   display: inline-flex;
@@ -754,23 +624,11 @@ body {
   border: 1px solid #4a3b2d;
   border-radius: 6px;
 }
-
-.stone-effect__name {
-  font-size: 12px;
-  color: #e9dec6;
-}
-
-.stone-effects__empty {
-  font-size: 12px;
-  color: #8f7f6a;
-}
+.stone-effect__name { font-size: 12px; color: #e9dec6; }
+.stone-effects__empty { font-size: 12px; color: #8f7f6a; }
 
 /* HP / MANA / END / XP BARS */
-.stone-bar-sprite {
-  position: relative;
-  overflow: hidden;
-}
-
+.stone-bar-sprite { position: relative; overflow: hidden; }
 .stone-bar-sprite__layer {
   position: absolute;
   top: 0;
@@ -778,4 +636,174 @@ body {
   transform-origin: top left;
   image-rendering: pixelated;
   background-size: 256px 256px;
+}
+
+/* --- Stone Button Row --- */
+.stone-button-row {
+  display: flex;
+  gap: 8px;
+  margin: 8px 0;
+  justify-content: center;
+}
+
+.stone-button {
+  flex: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 34px;
+  padding: 6px 14px;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--c-text-main);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6);
+  background-color: #3c322a;
+  background-image: var(--bg-stone-tex);
+  background-size: cover;
+  border: 1px solid #6c5742;
+  border-radius: var(--radius-md);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.45);
+  cursor: pointer;
+  transition: filter 0.2s;
+}
+
+.stone-button:hover {
+  filter: brightness(1.1);
+}
+
+.stone-button:active {
+  filter: brightness(0.9);
+}
+
+/* --- Inventory Modal --- */
+.stone-modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.8);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 20px;
+  overflow-y: auto;
+}
+
+.stone-modal {
+  background-color: var(--c-bg-panel);
+  background-image:
+    linear-gradient(135deg, rgba(82, 68, 52, 0.2), rgba(30, 25, 22, 0.5)),
+    var(--bg-stone-light-tex);
+  background-size: 100% 100%, 128px 128px;
+  background-repeat: no-repeat, repeat;
+  border: 2px solid var(--c-border-stone);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.04),
+    0 4px 12px rgba(0, 0, 0, 0.45);
+  border-radius: var(--radius-lg);
+  max-width: 900px;
+  width: 100%;
+  max-height: 90vh;
+  overflow-y: auto;
+}
+
+.stone-modal__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--c-border-light);
+}
+
+.stone-modal__title {
+  font-size: 24px;
+  color: var(--c-text-gold);
+  margin: 0;
+  letter-spacing: 0.5px;
+}
+
+.stone-modal__close {
+  background: none;
+  border: none;
+  color: var(--c-text-main);
+  font-size: 32px;
+  cursor: pointer;
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  transition: background 0.2s;
+}
+
+.stone-modal__close:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.stone-modal__body {
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.stone-inventory-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.stone-inventory-section__title {
+  font-size: 14px;
+  color: var(--c-text-gold);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin: 0;
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--c-border-light);
+}
+
+.stone-inventory-grid--equipment {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(38px, 1fr));
+  gap: 4px;
+  max-width: 100%;
+}
+
+.stone-inventory-grid--inventory {
+  display: grid;
+  grid-template-columns: repeat(8, 38px);
+  gap: 4px;
+}
+
+.stone-inventory-grid--bag {
+  display: grid;
+  grid-template-columns: repeat(10, 38px);
+  gap: 4px;
+}
+
+/* Mobile responsiveness for modal */
+@media (max-width: 640px) {
+  .stone-modal {
+    max-width: 95%;
+    max-height: 95vh;
+  }
+
+  .stone-inventory-grid--bag {
+    grid-template-columns: repeat(5, 38px);
+  }
+
+.stone-inventory-grid--equipment {
+  grid-template-columns: repeat(5, 38px);
+}
+}
+
+@keyframes con-blink {
+  0% { box-shadow: 0 0 6px rgba(255,255,255,0.2); }
+  50% { box-shadow: 0 0 14px var(--con-color, rgba(255,255,255,0.7)); }
+  100% { box-shadow: 0 0 6px rgba(255,255,255,0.2); }
 }

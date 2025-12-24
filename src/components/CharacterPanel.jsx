@@ -5,8 +5,8 @@ const BAR_H = 20;
 const BAR_SCALE_X = 2.9;
 const BAR_SCALE_Y = 1.4;
 const BAR_LINE_SCALE_Y = BAR_SCALE_Y; // keep line same height as bar
-const BAR_LINE_OFFSET_Y = 0;
-const BAR_LINE_OFFSET_X = -20; // nudge left for xp line start
+const BAR_LINE_OFFSET_Y = -3;
+const BAR_LINE_OFFSET_X = -5; // nudge left for xp line start
 const SHEET = '/stone-ui/ui/classicwind1.png';
 
 // Rough cut positions from the sheet; we can dial these once visible.
@@ -149,6 +149,10 @@ export default function CharacterPanel({
   derivedStats = {},
   inventoryPreview = [],
   onInspectItem = () => {},
+  onSlotClick = () => {},
+  onSlotRightClick = () => {},
+  onInventoryOpen = () => {},
+  selectedSlot = null,
   raceName = '',
   deityName = '',
   currency,
@@ -192,6 +196,16 @@ export default function CharacterPanel({
     { text: `Spell Dmg +${stats.spellDmgMod || 0}%` },
     { text: `Heal Mod +${stats.healMod || 0}%` }
   ];
+
+  const handleSkillsClick = () => {
+    alert('Skills coming soon!');
+  };
+
+  const handleInventoryClick = () => {
+    if (onInventoryOpen) {
+      onInventoryOpen();
+    }
+  };
 
   const slotLabels = [
     'Head',
@@ -249,8 +263,17 @@ export default function CharacterPanel({
                 ))}
               </div>
             </div>
-            {renderAttrRow('Items Found', inventoryLength)}
+            <div className="stone-button-row">
+            <button className="stone-button" onClick={handleSkillsClick}>
+              Skills
+            </button>
+            <button className="stone-button" onClick={handleInventoryClick}>
+              Bags
+            </button>
           </div>
+          </div>
+
+          
 
           <div className="stone-stats">
             <div className="stone-block">
@@ -326,24 +349,40 @@ export default function CharacterPanel({
               {Array.from({ length: slotLabels.length }).map((_, idx) => {
                 const item = inventoryPreview[idx];
                 const label = slotLabels[idx] || `${idx + 1}`;
+                const isSelected = selectedSlot === idx;
                 return (
-                  <div key={idx} className="stone-slot">
+                  <div
+                    key={idx}
+                    className={`stone-slot ${isSelected ? 'stone-slot--selected' : ''}`}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      if (e.shiftKey && item) {
+                        onInspectItem(item);
+                      } else {
+                        onSlotClick(idx);
+                      }
+                    }}
+                    onContextMenu={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      if (item && item.stackable && item.quantity > 1) {
+                        onSlotRightClick(idx);
+                      }
+                    }}
+                    style={{ cursor: 'pointer' }}
+                  >
                     {item ? (
                       <div
                         className="stone-slot__item"
                         role="button"
                         tabIndex={0}
                         title={buildItemTooltip(item)}
-                        onClick={(e) => {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          onInspectItem(item);
-                        }}
                         onKeyDown={(e) => {
                           if (e.key === 'Enter' || e.key === ' ') {
                             e.preventDefault();
                             e.stopPropagation();
-                            onInspectItem(item);
+                            onSlotClick(idx);
                           }
                         }}
                       >
@@ -353,9 +392,13 @@ export default function CharacterPanel({
                           ) : (
                             <div className="stone-slot__icon-fallback" />
                           )}
-                          {item.quantity > 1 && (
+                          {item.bagSlots && item.contents ? (
+                            <span className="stone-slot__qty">
+                              x{item.contents.filter(c => c).length}/{item.bagSlots}
+                            </span>
+                          ) : item.quantity > 1 ? (
                             <span className="stone-slot__qty">x{item.quantity}</span>
-                          )}
+                          ) : null}
                         </div>
                       </div>
                     ) : (
@@ -367,36 +410,20 @@ export default function CharacterPanel({
               </div>
             </div>
             <div className="stone-row stone-row--effects">
-          <div className="stone-effects">
-            <div className="stone-effects__icons">
-              {effects.length === 0 && <span className="stone-effects__empty">No effects</span>}
-              {effects.map((fx) => (
-                <div key={fx.id || fx.name} className="stone-effect">
-                  <EqIcon index={fx.iconIndex || fx.icon || 0} size={22} />
-                  <span className="stone-effect__name">{fx.name}</span>
-                </div>
-              ))}
-            </div>
-          </div>
           <div className="stone-money">
             <div className="stone-row">
               <span className="stone-label">Plat</span>
               <span className="stone-value plat">{currency.platinum}</span>
-            </div>
-            <div className="stone-row">
+
               <span className="stone-label gold">Gold</span>
               <span className="stone-value gold">{currency.gold}</span>
-            </div>
-            <div className="stone-row">
+
               <span className="stone-label silver">Silver</span>
               <span className="stone-value silver">{currency.silver}</span>
             </div>
-            <div className="stone-row">
-              <span className="stone-label copper">Copper</span>
-              <span className="stone-value copper">{currency.copper}</span>
+
             </div>
           </div>
-        </div>
           </div>
         </div>
 

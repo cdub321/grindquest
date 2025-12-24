@@ -100,3 +100,9 @@ export async function fetchCampMembers() {
   if (error) throw error;
   return data || [];
 }
+
+export async function fetchMerchantItems() {
+  const { data, error } = await supabase.from('merchant_items').select('*');
+  if (error) throw error;
+  return data || [];
+}
