@@ -26,7 +26,11 @@ export default function CombatConsole({
   onUseSkill,
   cooldowns = {},
   now = Date.now(),
-  combatLog = []
+  combatLog = [],
+  inCombat = false,
+  castingState = null,
+  effects = [],
+  isSitting = false
 }) {
   const logRef = useRef(null);
   const [showConfig, setShowConfig] = useState(false);
@@ -71,13 +75,13 @@ export default function CombatConsole({
           border: '1px solid rgba(255, 255, 255, 0.08)',
           borderRadius: '6px'
         }}
-      >
-        <div style={{ fontSize: '11px', color: '#d6c18a' }}>{isSpell ? 'Spell' : 'Skill'} {slotIdx}</div>
-        <div style={{ width: 28, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          {skill && typeof (skill.iconIndex ?? skill.icon) === 'number' ? (
-            <EqIcon index={skill.iconIndex ?? skill.icon} size={24} cols={6} sheet="/stone-ui/itemicons/items1.png" />
+        >
+          <div style={{ fontSize: '11px', color: '#d6c18a' }}>{isSpell ? 'Spell' : 'Skill'} {slotIdx}</div>
+          <div style={{ width: 28, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            {skill && typeof (skill.iconIndex ?? skill.icon) === 'number' ? (
+            <EqIcon index={skill.iconIndex ?? skill.icon} size={24} cols={6} sheet="/stone-ui/spellicons/spells1.png" />
           ) : null}
-        </div>
+          </div>
         <select
           value={skill?.id || ''}
           onChange={(e) => onChange(slotIdx, e.target.value)}
@@ -114,26 +118,29 @@ export default function CombatConsole({
   const spellOptions = (knownSpells || []).map((s) => ({ id: s.id, name: s.name }));
 
   const totalSpellSlots = [...spellSlots];
-  while (totalSpellSlots.length < 9) totalSpellSlots.push(null);
+  while (totalSpellSlots.length < 6) totalSpellSlots.push(null);
   const totalAbilitySlots = [...abilitySlots];
-  while (totalAbilitySlots.length < 9) totalAbilitySlots.push(null);
+  while (totalAbilitySlots.length < 6) totalAbilitySlots.push(null);
   const displayPlayerName = (characterName || '').trim() || 'Unnamed';
 
   const primarySpellSlots = totalSpellSlots.slice(0, 6);
-  const extraSpellSlots = totalSpellSlots.slice(6, 9);
-  const leadAbilitySlots = totalAbilitySlots.slice(0, 3);
-  const trailingAbilitySlots = totalAbilitySlots.slice(3, 9);
+  const allAbilitySlots = totalAbilitySlots.slice(0, 6);
 
   const getConInfo = () => {
     if (!currentMob) return null;
-    const guessLevel = Math.max(1, Math.round((currentMob.xp || 0) / 100));
-    const diff = guessLevel - level;
+    const mobLevel = Number(currentMob.level);
+    if (!Number.isFinite(mobLevel)) {
+      throw new Error('Mob level missing or invalid');
+    }
+    const diff = mobLevel - level;
+    if (diff >= 8) return { label: 'Maroon', color: '#4a041b' };
     if (diff >= 4) return { label: 'Red', color: '#b91c1c' };
-    if (diff >= 2) return { label: 'Yellow', color: '#f59e0b' };
-    if (diff >= -1 && diff <= 1) return { label: 'White', color: '#e5e7eb' };
-    if (diff >= -6) return { label: 'Blue', color: '#3b82f6' };
-    if (diff >= -10) return { label: 'L. Blue', color: '#60a5fa' };
-    return { label: 'Green', color: '#10b981' };
+    if (diff >= 1) return { label: 'Yellow', color: '#f59e0b' };
+    if (diff === 0) return { label: 'White', color: '#e5e7eb' };
+    if (diff >= -3) return { label: 'Blue', color: '#3b82f6' };
+    if (diff >= -5) return { label: 'L. Blue', color: '#60a5fa' };
+    if (diff >= -8) return { label: 'Green', color: '#10b981' };
+    return { label: 'Gray', color: '#9ca3af' };
   };
   const con = getConInfo();
 
@@ -141,6 +148,30 @@ export default function CombatConsole({
     const until = skill ? (cooldowns[skill.id] || 0) : 0;
     const remaining = until > now ? Math.ceil((until - now) / 1000) : 0;
     const isReady = remaining === 0;
+    const isCasting = castingState?.skillId === skill?.id;
+    const manaCost = skill?.resource_cost?.mana || 0;
+    const endCost = skill?.resource_cost?.endurance || skill?.resource_cost?.stamina || 0;
+    const castMs = skill?.cast_time || 0;
+    const castLabel = castMs ? `${(castMs / 1000).toFixed(1)}s cast` : 'Instant';
+    const effect = skill?.effect || {};
+    const dmgLabel = (() => {
+      if (!effect) return '';
+      if (effect.type === 'damage') return `Damage: ${effect.base || 0}`;
+      if (effect.type === 'dot') return `DoT: ${effect.tick || effect.base || 0} x${effect.duration || 0}`;
+      if (effect.type === 'heal') return `Heal: ${effect.base || 0}`;
+      if (effect.type === 'hot') return `HoT: ${effect.tick || effect.base || 0} x${effect.duration || 0}`;
+      if (effect.type === 'buff') return 'Buff';
+      if (effect.type === 'debuff') return 'Debuff';
+      return '';
+    })();
+    const tooltipParts = [
+      skill?.name,
+      manaCost ? `Mana: ${manaCost}` : null,
+      endCost ? `End: ${endCost}` : null,
+      castLabel,
+      dmgLabel
+    ].filter(Boolean);
+    const title = tooltipParts.join(' | ');
     const isAutoToggle = !isSpell && skill?.id === 'builtin-auto' && isAutoAttack;
     const bgImage = isSpell
       ? "/stone-ui/ui/spellempty.png"
@@ -149,6 +180,10 @@ export default function CombatConsole({
         : (skill ? "/stone-ui/ui/hotkeyup.png" : "/stone-ui/ui/hotkeyslot.png");
     const slotClass = isSpell ? 'spell-slot' : 'hotkey-slot';
     const classNames = [slotClass, skill ? 'has-skill' : 'hotkey-empty'].join(' ');
+    const displayName = skill?.id === 'builtin-sit'
+      ? (isSitting ? 'Stand' : 'Sit')
+      : skill?.name;
+
     return (
       <button
         className={classNames}
@@ -162,16 +197,21 @@ export default function CombatConsole({
           position: 'relative',
           padding: 4
         }}
-        onClick={() => skill && isReady && onUse(skill)}
+        onClick={() => skill && isReady && !isCasting && onUse(skill)}
         onDoubleClick={() => skill && onClear()}
-        disabled={!skill || !isReady}
-        title={skill ? skill.name : 'Empty'}
+        disabled={!skill || !isReady || isCasting}
+        title={skill ? title : 'Empty'}
       >
-        {isSpell && skill && typeof (skill.iconIndex ?? skill.icon) === 'number' ? (
-          <EqIcon index={skill.iconIndex ?? skill.icon} size={24} cols={6} sheet="/stone-ui/itemicons/items1.png" />
+        {!isSpell && skill && typeof (skill.iconIndex ?? skill.icon) === 'number' ? (
+          <div style={{ position: 'absolute', top: 2, left: '50%', transform: 'translateX(-50%)', pointerEvents: 'none' }}>
+            <EqIcon index={skill.iconIndex ?? skill.icon} size={20} cols={6} sheet="/stone-ui/spellicons/spells1.png" />
+          </div>
         ) : null}
-        {skill && (
-          <div className="hotkey-slot__label">{skill.name}</div>
+        {isSpell && skill && typeof (skill.iconIndex ?? skill.icon) === 'number' ? (
+          <EqIcon index={skill.iconIndex ?? skill.icon} size={32} cols={8} sheet="/stone-ui/spellicons/gemicons1.png" />
+        ) : null}
+        {!isSpell && skill && (
+          <div className="hotkey-slot__label">{isCasting ? 'Casting...' : displayName}</div>
         )}
         {skill && !isReady && <div className="hotkey-slot__cd">{remaining}s</div>}
       </button>
@@ -188,7 +228,7 @@ export default function CombatConsole({
                 style={{
                   background: 'rgba(0,0,0,0.45)',
                   borderRadius: '6px',
-                  height: 160,
+                  height: 140,
                   border: '1px dashed rgba(255,255,255,0.15)',
                   display: 'flex',
                   alignItems: 'center',
@@ -204,16 +244,17 @@ export default function CombatConsole({
 
               <div
                 style={{
-                  border: con ? `1px solid ${con.color}` : '1px solid rgba(255,255,255,0.2)',
+                  border: con ? `2px solid ${con.color}` : '1px solid rgba(255,255,255,0.2)',
                   borderRadius: 8,
-                  padding: '6px',
+                  padding: '4px',
                   display: 'grid',
-                  gap: '6px'
+                  gap: '1px'
                 }}
               >
                 <div className="console-bar">
                   <div className="console-bar__label">
                     <span>
+                      {inCombat && <span style={{ marginRight: 6 }}>⚔️</span>}
                       {currentMob.name}
                       {currentMob.isNamed && <span className="mob-tag" style={{ marginLeft: 6 }}>NAMED</span>}
                     </span>
@@ -233,7 +274,7 @@ export default function CombatConsole({
                   const label = hasMana ? 'Mana' : 'Endurance';
                   const currentVal = maxVal; // placeholder until mob resource spend is implemented
                   const pct = maxVal > 0 ? Math.max(0, Math.min(100, (currentVal / maxVal) * 100)) : 0;
-                  const barColor = hasMana ? '#3b82f6' : '#f59e0b';
+                  const barColor = hasMana ? '#3b82f6' : '#ffb637ff';
                   return (
                     <div className="console-bar">
                       <div className="console-bar__track">
@@ -246,14 +287,14 @@ export default function CombatConsole({
                   );
                 })() : null}
 
-                <div style={{ display: 'flex', gap: '12px', alignItems: 'center', justifyContent: 'center', flexWrap: 'nowrap', fontSize: 10 }}>
+                <div style={{ display: 'flex', gap: '48px', alignItems: 'center', justifyContent: 'center', flexWrap: 'nowrap', fontSize: 10 }}>
                   <div style={{ textAlign: 'center' }}>
-                    <div style={{ fontSize: 10, color: '#c2b59b' }}>DMG</div>
-                    <div style={{ fontWeight: 700, fontSize: 11 }}>{currentMob.damage} {currentMob.delay ? `(Delay ${currentMob.delay})` : ''}</div>
+                    <div style={{ fontSize: 8, color: '#c2b59b' }}>DMG</div>
+                    <div style={{ fontWeight: 700, fontSize: 10 }}>{currentMob.damage} {currentMob.delay ? `(Delay ${currentMob.delay})` : ''}</div>
                   </div>
                   <div style={{ textAlign: 'center' }}>
-                    <div style={{ fontSize: 10, color: '#c2b59b' }}>DMG Type</div>
-                    <div style={{ fontWeight: 700, fontSize: 11 }}>{currentMob.damage_type || 'Physical'}</div>
+                    <div style={{ fontSize: 8, color: '#c2b59b' }}>DMG Type</div>
+                    <div style={{ fontWeight: 700, fontSize: 10 }}>{currentMob.damage_type || 'Physical'}</div>
                   </div>
                 </div>
               </div>
@@ -262,9 +303,8 @@ export default function CombatConsole({
                 style={{
                   border: '1px solid rgba(255,255,255,0.15)',
                   borderRadius: 8,
-                  padding: '6px',
+                  padding: '4px',
                   display: 'grid',
-                  gap: '4px'
                 }}
               >
                 <div className="console-bar">
@@ -281,7 +321,7 @@ export default function CombatConsole({
                 </div>
                 <div className="console-bar">
                   <div className="console-bar__label">
-                    <span>{playerClass.isCaster ? 'Mana' : 'Endurance'}</span>
+                    <span></span>
                     <span>{playerClass.isCaster ? `${mana} / ${maxMana}` : `${endurance} / ${maxEndurance}`}</span>
                   </div>
                   <div className="console-bar__track">
@@ -289,7 +329,7 @@ export default function CombatConsole({
                       className="console-bar__fill"
                       style={{
                         width: `${Math.max(0, Math.min(100, (playerClass.isCaster ? (mana / maxMana) : (endurance / maxEndurance)) * 100))}%`,
-                        background: playerClass.isCaster ? 'linear-gradient(90deg, #3b82f6, #3b82f6)' : 'linear-gradient(90deg, #f59e0b, #f59e0b)'
+                        background: playerClass.isCaster ? 'linear-gradient(90deg, #3b82f6, #3b82f6)' : 'linear-gradient(90deg, #ffb637ff, #f59e0b)'
                       }}
                     />
                   </div>
@@ -303,50 +343,10 @@ export default function CombatConsole({
 
         <div className="console-skills">
           <div
-            className="console-title"
-            style={{
-              display: 'flex',
-              justifyContent: 'center',
-              alignItems: 'center',
-              gap: '8px',
-              padding: '6px 10px',
-              backgroundImage: "url('/stone-ui/ui/bg-stone-light.png')",
-              backgroundSize: 'cover',
-              border: '1px solid rgba(0, 0, 0, 0.45)',
-              boxShadow: '0 3px 8px rgba(0, 0, 0, 0.35)',
-              borderRadius: '6px'
-            }}
-          >
-            <button
-              className="btn"
-              onClick={() => setShowConfig(true)}
-              style={{
-                padding: '6px 14px',
-                fontSize: '12px',
-                textTransform: 'uppercase',
-                letterSpacing: '0.5px',
-                display: 'inline-flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                backgroundImage: "url('/stone-ui/ui/bg-stone.png')",
-                backgroundSize: 'cover',
-                color: '#f5e9d7',
-                border: '1px solid rgba(255,255,255,0.15)',
-                boxShadow: '0 2px 6px rgba(0, 0, 0, 0.45)',
-                textShadow: '0 1px 2px rgba(0,0,0,0.6)',
-                height: 34,
-                borderRadius: '8px'
-              }}
-            >
-              <span style={{ position: 'relative', top: '3px' }}>Abilities</span>
-            </button>
-          </div>
-
-          <div
             style={{
               display: 'grid',
               gridTemplateColumns: '1fr 1fr 1fr',
-              gap: '8px',
+              gap: '18px',
               alignItems: 'start'
             }}
           >
@@ -355,7 +355,7 @@ export default function CombatConsole({
               <div style={{
                 display: 'grid',
                 gridTemplateColumns: 'repeat(auto-fill, minmax(46px, 46px))',
-                gap: '4px',
+                gap: '1px',
                 justifyContent: 'start'
               }}>
                 {primarySpellSlots.map((skill, idx) => (
@@ -366,51 +366,47 @@ export default function CombatConsole({
               </div>
             </div>
 
-            {/* Middle column: extra spells (3) + extra abilities (3) */}
-            <div style={{ minWidth: 0, display: 'grid', gap: '8px' }}>
-              <div style={{
-                display: 'grid',
-                gridTemplateColumns: 'repeat(auto-fill, minmax(46px, 46px))',
-                gap: '4px',
-                justifyContent: 'start'
-              }}>
-                {extraSpellSlots.map((skill, idx) => {
-                  const slotIndex = 6 + idx + 1;
-                  return (
-                    <div key={`extra-spell-${idx}`} style={{ width: 46 }}>
-                      {renderUseButton(skill, onUseSkill, () => onClearSpell(slotIndex), true)}
-                    </div>
-                  );
-                })}
+            {/* Middle column: hotkeys + active effects */}
+            <div style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: '10px' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', alignItems: 'center' }}>
+                <div style={{ width: 48 }}>{renderUseButton({ id: 'builtin-attack', name: 'Attack' }, onUseSkill, () => {}, false)}</div>
+                <div style={{ width: 48 }}>{renderUseButton({ id: 'builtin-ranged', name: 'Ranged' }, onUseSkill, () => {}, false)}</div>
+                <div style={{ width: 48 }}>{renderUseButton({ id: 'builtin-sit', name: 'Sit/Stand' }, onUseSkill, () => {}, false)}</div>
+                <div style={{ width: 48 }}>{renderUseButton({ id: 'builtin-meditate', name: 'Meditate' }, () => { onUseSkill({ id: 'builtin-meditate', name: 'Meditate' }); setShowConfig(true); }, () => {}, false)}</div>
               </div>
-
-              <div style={{
-                display: 'grid',
-                gridTemplateColumns: 'repeat(auto-fill, minmax(46px, 46px))',
-                gap: '4px',
-                justifyContent: 'start'
-              }}>
-                {leadAbilitySlots.map((skill, idx) => {
-                  const slotIndex = idx + 1;
-                  return (
-                    <div key={`lead-ability-${idx}`} style={{ width: 46 }}>
-                      {renderUseButton(skill, onUseSkill, () => onClearAbility(slotIndex))}
-                    </div>
-                  );
-                })}
+              <div style={{ fontSize: 12, fontWeight: 700, color: '#d6c18a', textAlign: 'center' }}>Effects</div>
+              <div className="stone-effects" style={{ padding: '6px', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 6, minHeight: 60 }}>
+                <div className="stone-effects__icons" style={{ display: 'grid', gap: '6px' }}>
+                  {effects.map((fx) => {
+                    const timeLeft = fx.expiresAt ? Math.max(0, Math.ceil((fx.expiresAt - Date.now()) / 1000)) : 0;
+                    return (
+                      <div key={fx.id || fx.name} className="stone-effect" style={{ display: 'grid', gridTemplateColumns: '24px 1fr auto', alignItems: 'center', gap: '6px' }} title={`${fx.name}${timeLeft > 0 ? `\n${timeLeft}s remaining` : ''}`}>
+                        <EqIcon
+                          index={fx.iconIndex || fx.icon || 0}
+                          size={22}
+                          cols={6}
+                          rows={6}
+                          sheet="/stone-ui/spellicons/spells1.png"
+                        />
+                        <span className="stone-effect__name" style={{ color: '#f5e9d7', fontSize: 12 }}>{fx.name}</span>
+                        {timeLeft > 0 && <span className="stone-effect__timer" style={{ color: '#9ca3af', fontSize: 11 }}>{timeLeft}s</span>}
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
             </div>
 
-            {/* Right column: primary abilities (6) */}
+            {/* Right column: abilities (6) */}
             <div style={{ minWidth: 0 }}>
               <div style={{
                 display: 'grid',
                 gridTemplateColumns: 'repeat(auto-fill, minmax(46px, 46px))',
-                gap: '4px',
+                gap: '1px',
                 justifyContent: 'start'
               }}>
-                {trailingAbilitySlots.map((skill, idx) => {
-                  const slotIndex = 3 + idx + 1;
+                {allAbilitySlots.map((skill, idx) => {
+                  const slotIndex = idx + 1;
                   return (
                     <div key={`ability-${idx}`} style={{ width: 46 }}>
                     {renderUseButton(skill, onUseSkill, () => onClearAbility(slotIndex))}

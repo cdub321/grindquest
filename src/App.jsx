@@ -15,15 +15,28 @@ import {
   getSession,
   fetchCharacters,
   createCharacter,
-  deleteCharacter,
-  loadCharacter,
-  saveSpellSlots,
-  fetchLeaderboardCharacters
+  deleteCharacter
 } from './services/playerStorage';
+import {
+  slotOrder,
+  CARRY_START,
+  canEquipItemInSlot,
+  addItemToInventory as addItemToInventoryUtil
+} from './services/inventoryManager';
 import CharacterSelectPanel from './components/CharacterSelectPanel';
 import CharacterCreatePanel from './components/CharacterCreatePanel';
 import EqIcon from './components/EqIcon';
+import InventoryModal from './components/InventoryModal';
 import { useReferenceData } from './hooks/useReferenceData';
+import { useCombat } from './hooks/useCombat';
+import { useSkillSlots } from './hooks/useSkillSlots';
+import { useCharacterLoader } from './hooks/useCharacterLoader';
+import {
+  calculateTotalBonuses,
+  calculateStatTotals,
+  calculateDerivedStats,
+  calculateDisplayBonuses
+} from './utils/statsCalculator';
 
 export default function GrindQuest() {
   const {
@@ -53,8 +66,6 @@ export default function GrindQuest() {
   const [raceId, setRaceId] = useState(null);
   const [deityId, setDeityId] = useState(null);
   const [boundLevel, setBoundLevel] = useState(1);
-  const [leaderboardCharacters, setLeaderboardCharacters] = useState([]);
-  const [isLeaderboardLoading, setIsLeaderboardLoading] = useState(false);
   const [user, setUser] = useState(null);
   const [characterId, setCharacterId] = useState(null);
   const [characterName, setCharacterName] = useState('');
@@ -77,6 +88,7 @@ export default function GrindQuest() {
   const [cooldownTick, setCooldownTick] = useState(0);
   const [inspectedItem, setInspectedItem] = useState(null);
   const [knownSkills, setKnownSkills] = useState([]);
+  const [selectedSlot, setSelectedSlot] = useState(null);
 
   const getStartingZoneId = (raceId) => {
     const race = races.find((r) => r.id === raceId);
@@ -135,47 +147,18 @@ export default function GrindQuest() {
   const [currentZoneId, setCurrentZoneId] = useState(initialZoneId);
   const currentZone = zones[currentZoneId] || { name: 'Unknown', mobs: [] };
   const currentZoneCamps = campsByZone[currentZoneId] || [];
-  const slotOrder = [
-    'head',
-    'face',
-    'ear1',
-    'ear2',
-    'neck',
-    'shoulders',
-    'arms',
-    'wrist1',
-    'wrist2',
-    'hands',
-    'chest',
-    'back',
-    'waist',
-    'legs',
-    'feet',
-    'finger1',
-    'finger2',
-    'primary',
-    'secondary',
-    'range',
-    'ammo',
-    'charm',
-    'inv1',
-    'inv2',
-    'inv3',
-    'inv4',
-    'inv5',
-    'inv6',
-    'inv7',
-    'inv8'
-  ];
-  const CARRY_START = slotOrder.indexOf('inv1');
+  // slotOrder and CARRY_START imported from inventoryManager
   const [currentMob, setCurrentMob] = useState(null);
   const [mobHp, setMobHp] = useState(0);
+  const [mobMana, setMobMana] = useState(0);
+  const [mobEndurance, setMobEndurance] = useState(0);
   const [isAutoAttack, setIsAutoAttack] = useState(false);
   const [combatLog, setCombatLog] = useState([]);
   const [slots, setSlots] = useState(Array(slotOrder.length).fill(null));
   const [inCombat, setInCombat] = useState(false);
   const [isSitting, setIsSitting] = useState(false);
   const [fleeExhausted, setFleeExhausted] = useState(false);
+  const [isInventoryModalOpen, setIsInventoryModalOpen] = useState(false);
 
   const autoAttackInterval = useRef(null);
   const regenInterval = useRef(null);
@@ -202,47 +185,7 @@ export default function GrindQuest() {
   }, 0), [slots]);
 
   const xpNeeded = level * 100;
-  const isHardcoreDead = mode === 'hardcore' && Boolean(killedAt);
 
-  const blockIfHardcoreDead = (reason = 'act') => {
-    if (!isHardcoreDead) return false;
-    addLog(`You are dead and cannot ${reason}. Create a new hardcore character to continue.`, 'error');
-    return true;
-  };
-
-  const mapLeaderboardRows = useCallback(
-    (modeFilter) => {
-      const filtered = (leaderboardCharacters || []).filter(
-        (row) => (row.mode || '').toLowerCase() === modeFilter
-      );
-      return filtered
-        .map((row) => {
-          const raceName = raceMap[row.race_id]?.name || row.race || 'Unknown';
-          const className = classNameMap[row.class_id] || row.class || row.class_id || 'Unknown';
-          const deityName = row.deity_id ? deityMap[row.deity_id]?.name : row.deity || 'None';
-          const levelVal = Number(row.level) || 0;
-          const xpVal = Number(row.xp) || 0;
-          const xpPerLevel = Math.max(1, levelVal * 100);
-          const progress = xpVal / xpPerLevel;
-          return {
-            ...row,
-            race: raceName,
-            className,
-            deity: deityName,
-            progress
-          };
-        })
-        .sort((a, b) => {
-          const progA = (a.level || 0) + (a.progress || 0);
-          const progB = (b.level || 0) + (b.progress || 0);
-          return progB - progA;
-        });
-    },
-    [classNameMap, deityMap, leaderboardCharacters, raceMap]
-  );
-
-  const normalLeaderboard = useMemo(() => mapLeaderboardRows('normal'), [mapLeaderboardRows]);
-  const hardcoreLeaderboard = useMemo(() => mapLeaderboardRows('hardcore'), [mapLeaderboardRows]);
 
   const createItemInstance = (itemId) => {
     const data = items[itemId];
@@ -254,113 +197,59 @@ export default function GrindQuest() {
       iconIndex: data.iconIndex ?? null,
       baseItemId: data.id,
       quantity: 1,
+      stackable: data.stackable ?? false,
+      maxStack: data.maxStack || 1,
       bagSlots: data.bagslots || data.bagSlots || 0
     };
   };
 
-  const totalBonuses = useMemo(() => {
-    const equipEnd = CARRY_START === -1 ? slots.length : CARRY_START;
-    const equipIndices = new Set(Array.from({ length: equipEnd }, (_, idx) => idx));
-    return slots.reduce(
-      (acc, item, idx) => {
-        if (!item || !equipIndices.has(idx)) return acc;
-        return {
-          damage: acc.damage + (item.bonuses?.damage || 0),
-          delay: item.bonuses?.delay ? item.bonuses.delay : acc.delay,
-          haste: acc.haste + (item.bonuses?.haste || 0),
-          hp: acc.hp + (item.bonuses?.hp || 0),
-          mana: acc.mana + (item.bonuses?.mana || 0),
-          endurance: acc.endurance + (item.bonuses?.endurance || 0),
-          xp: acc.xp + (item.bonuses?.xp || 0),
-          totalResist: acc.totalResist + (item.bonuses?.totalResist || 0),
-          str: acc.str + (item.bonuses?.str || 0),
-          sta: acc.sta + (item.bonuses?.sta || 0),
-          agi: acc.agi + (item.bonuses?.agi || 0),
-          dex: acc.dex + (item.bonuses?.dex || 0),
-          int: acc.int + (item.bonuses?.int || 0),
-          wis: acc.wis + (item.bonuses?.wis || 0),
-          cha: acc.cha + (item.bonuses?.cha || 0),
-          mr: acc.mr + (item.bonuses?.mr || 0),
-          dr: acc.dr + (item.bonuses?.dr || 0),
-          fr: acc.fr + (item.bonuses?.fr || 0),
-          cr: acc.cr + (item.bonuses?.cr || 0),
-          pr: acc.pr + (item.bonuses?.pr || 0),
-        ac: acc.ac + (item.bonuses?.ac || 0)
-      };
-    },
-      {
-        damage: 0,
-        delay: null,
-        haste: 0,
-        hp: 0,
-        mana: 0,
-        endurance: 0,
-        xp: 0,
-        totalResist: 0,
-        str: 0,
-        sta: 0,
-        agi: 0,
-        dex: 0,
-        int: 0,
-        wis: 0,
-        cha: 0,
-        mr: 0,
-        dr: 0,
-        fr: 0,
-        cr: 0,
-      pr: 0,
-      ac: 0
-    }
+  const totalBonuses = useMemo(() =>
+    calculateTotalBonuses(slots, CARRY_START),
+    [slots, CARRY_START]
   );
-}, [slots, CARRY_START]);
 
-  const statTotals = useMemo(() => ({
-    str: (baseStats.str || 0) + (totalBonuses.str || 0),
-    sta: (baseStats.sta || 0) + (totalBonuses.sta || 0),
-    agi: (baseStats.agi || 0) + (totalBonuses.agi || 0),
-    dex: (baseStats.dex || 0) + (totalBonuses.dex || 0),
-    int: (baseStats.int || 0) + (totalBonuses.int || 0),
-    wis: (baseStats.wis || 0) + (totalBonuses.wis || 0),
-    cha: (baseStats.cha || 0) + (totalBonuses.cha || 0),
-    mr: totalBonuses.mr || 0,
-    dr: totalBonuses.dr || 0,
-    fr: totalBonuses.fr || 0,
-    cr: totalBonuses.cr || 0,
-    pr: totalBonuses.pr || 0
-  }), [baseStats, totalBonuses]);
+  // Calculate base stats (innate + gear bonuses)
+  const baseStatTotals = useMemo(() =>
+    calculateStatTotals(baseStats, totalBonuses),
+    [baseStats, totalBonuses]
+  );
 
-  const displayBonuses = useMemo(() => ({
-    ...totalBonuses,
-    ...statTotals
-  }), [totalBonuses, statTotals]);
+  // Placeholder for getStatModifiers - will be set after useCombat initializes
+  const [getStatModifiersFn, setGetStatModifiersFn] = useState(null);
+  const [playerEffectsState, setPlayerEffectsState] = useState([]);
 
-  const derivedStats = useMemo(() => {
-    const strMod = Math.floor((statTotals.str || 0) / 10);
-    const dexSpeedMod = Math.max(0.7, 1 - (statTotals.dex || 0) * 0.002);
-    const hasteMod = Math.max(0.5, 1 - (totalBonuses.haste || 0) / 100);
-    const baseDelay = totalBonuses.delay || playerClass.attackSpeed || 1000;
-    const attackDelay = Math.max(300, Math.floor(baseDelay * dexSpeedMod * hasteMod));
-    const minDamageBase = Math.floor(playerClass.baseDamage * (1 + level * 0.1));
-    const minDamage = minDamageBase + strMod + (totalBonuses.damage || 0);
-    const maxDamage = minDamage + 5;
-    const hpFromSta = (statTotals.sta || 0) * 5;
-    const manaFromStats = ((statTotals.int || 0) + (statTotals.wis || 0)) * 2;
-    const enduranceFromSta = (statTotals.sta || 0) * 2;
+  // Final stat totals including modifiers from effects
+  // This will be recalculated after useCombat provides getStatModifiers
+  const statTotals = useMemo(() => {
+    if (!getStatModifiersFn) {
+      return baseStatTotals;
+    }
+    const mods = getStatModifiersFn('player') || {};
     return {
-      minDamage,
-      maxDamage,
-      attackDelay,
-      strMod,
-      hpFromSta,
-      manaFromStats,
-      enduranceFromSta,
-      spellDmgMod: Math.floor((totalBonuses.int || 0) / 10),
-      healMod: Math.floor((statTotals.wis || 0) / 10),
-      xpBonus: totalBonuses.xp || 0,
-      totalResist: totalBonuses.totalResist || 0,
-      carryCap: statTotals.str || 0
+      str: (baseStatTotals.str || 0) + (mods.str || 0),
+      sta: (baseStatTotals.sta || 0) + (mods.sta || 0),
+      agi: (baseStatTotals.agi || 0) + (mods.agi || 0),
+      dex: (baseStatTotals.dex || 0) + (mods.dex || 0),
+      int: (baseStatTotals.int || 0) + (mods.int || 0),
+      wis: (baseStatTotals.wis || 0) + (mods.wis || 0),
+      cha: (baseStatTotals.cha || 0) + (mods.cha || 0),
+      mr: (baseStatTotals.mr || 0) + (mods.mr || 0),
+      dr: (baseStatTotals.dr || 0) + (mods.dr || 0),
+      fr: (baseStatTotals.fr || 0) + (mods.fr || 0),
+      cr: (baseStatTotals.cr || 0) + (mods.cr || 0),
+      pr: (baseStatTotals.pr || 0) + (mods.pr || 0)
     };
-  }, [playerClass.attackSpeed, playerClass.baseDamage, totalBonuses, statTotals, level]);
+  }, [baseStatTotals, getStatModifiersFn, playerEffectsState]);
+
+  const displayBonuses = useMemo(() =>
+    calculateDisplayBonuses(totalBonuses, statTotals),
+    [totalBonuses, statTotals]
+  );
+
+  const derivedStats = useMemo(() =>
+    calculateDerivedStats({ playerClass, level, totalBonuses, statTotals }),
+    [playerClass, level, totalBonuses, statTotals]
+  );
 
   const getHpRegenRate = () => {
     const base = inCombat ? 1 : 3;
@@ -383,28 +272,6 @@ export default function GrindQuest() {
     return Math.max(1, Math.floor(base * penalty));
   };
 
-  const getResistValue = (school = 'magic') => {
-    const map = {
-      poison: statTotals.pr || 0,
-      disease: statTotals.dr || 0,
-      fire: statTotals.fr || 0,
-      cold: statTotals.cr || 0,
-      magic: statTotals.mr || 0
-    };
-    return map[school] || 0;
-  };
-
-  const mitigateSpellDamage = (baseAmount, school = 'magic') => {
-    const resistVal = getResistValue(school);
-    const afterResist = Math.max(0, baseAmount - resistVal);
-    const totalPct = derivedStats.totalResist || 0;
-    const afterTotal = Math.max(0, Math.floor(afterResist * (1 - totalPct / 100)));
-    return {
-      final: afterTotal,
-      resistReduced: baseAmount - afterResist,
-      totalReduced: afterResist - afterTotal
-    };
-  };
 
   useEffect(() => {
     const t = setInterval(() => setCooldownTick(Date.now()), 1000);
@@ -452,96 +319,12 @@ export default function GrindQuest() {
     prevMaxEnduranceRef.current = newMaxEndurance;
   }, [baseMaxHp, baseMaxMana, baseMaxEndurance, totalBonuses.hp, totalBonuses.mana, totalBonuses.endurance, totalBonuses.sta, totalBonuses.int, totalBonuses.wis, playerClass.isCaster, derivedStats.enduranceFromSta]);
 
-    const addLog = (message, type = 'normal') => {
-      setCombatLog(prev => {
-        const last = prev[prev.length - 1];
-        if (last && last.message === message && last.type === type) {
-          return prev;
-      }
+  const addLog = (message, type = 'normal') => {
+    setCombatLog(prev => {
       const entry = { message, type, id: Date.now() };
       lastLogRef.current = entry;
       return [...prev.slice(-5), entry];
     });
-  };
-
-  const spawnMob = (campId = currentCampId) => {
-    const mobList = campMembers[campId] || [];
-    if (!mobList.length) {
-      addLog('No mobs available in this zone.', 'error');
-      return;
-    }
-    const mob = mobList[Math.floor(Math.random() * mobList.length)] || {};
-    const normalizedMob = {
-      ...mob,
-      name: mob.name || 'Unknown',
-      hp: Number(mob.hp) || 1,
-      mana: Number(mob.mana) || 0,
-      endurance: Number(mob.endurance) || Number(mob.end) || 0,
-      damage: Number(mob.damage) || 1,
-      xp: Number(mob.xp) || 0,
-      ac: Number(mob.ac) || 0
-    };
-    setCurrentMob(normalizedMob);
-    setMobHp(normalizedMob.hp);
-    addLog(`${normalizedMob.name} spawns!`, 'spawn');
-  };
-
-  const handleMobDeath = () => {
-    if (!currentMob) return;
-    addLog(`${currentMob.name} has been slain!`, 'kill');
-    const baseXp = currentMob.xp;
-    const xpBonusPct = derivedStats.xpBonus || 0;
-    const bonusMultiplier = 1 + xpBonusPct / 100;
-    const xpGain = Math.floor(baseXp * bonusMultiplier);
-    const bonusPart = xpGain - baseXp;
-    const newXp = xp + xpGain;
-    setXp(newXp);
-    if (bonusPart > 0) {
-      addLog(`You gain ${xpGain} experience! (+${bonusPart} bonus)`, 'xp');
-    } else {
-      addLog(`You gain ${xpGain} experience!`, 'xp');
-    }
-    scheduleSave({
-      character: {
-        level,
-        xp: newXp,
-        zone_id: currentZoneId,
-        currency: { copper, silver, gold, platinum }
-      },
-      inventory: true
-    });
-
-    if (newXp >= xpNeeded) {
-      setLevel(level + 1);
-      setXp(newXp - xpNeeded);
-      addLog(`You have gained a level! You are now level ${level + 1}!`, 'levelup');
-      scheduleSave({
-        character: {
-          level: level + 1,
-          xp: newXp - xpNeeded,
-          zone_id: currentZoneId,
-          currency: { copper, silver, gold, platinum }
-        },
-        inventory: true
-      });
-    }
-
-    const lootTable = lootTables[currentMob.lootTableId] || [];
-    lootTable.forEach((entry) => {
-      if (entry.drop_chance == null) return;
-      const def = items[entry.item_id];
-      if (Math.random() <= entry.drop_chance) {
-        const qtyMin = entry.min_qty || 1;
-        const qtyMax = entry.max_qty || qtyMin;
-        const qty = Math.max(qtyMin, Math.ceil(Math.random() * qtyMax));
-        const item = createItemInstance(def.id);
-        addItemToInventory(item, qty);
-        addLog(`You receive: ${def.name}${qty > 1 ? ` x${qty}` : ''}`, 'loot');
-      }
-    });
-
-    setTimeout(() => spawnMob(), 1000);
-    setInCombat(false);
   };
 
   const availableZoneIds = useMemo(() => {
@@ -573,35 +356,6 @@ export default function GrindQuest() {
     }
     return false;
   }, [slotsRef]);
-
-  const handleCampChange = useCallback((campId, zoneIdOverride = null) => {
-    if (blockIfHardcoreDead('change camps')) return;
-    const zoneKey = zoneIdOverride || currentZoneId;
-    const zoneCamps = campsByZone[zoneKey] || [];
-    const camp = zoneCamps.find((c) => `${c.id}` === `${campId}`);
-    if (!camp) {
-      setCurrentCampId(null);
-      return;
-    }
-    const needsKey = camp.key_item;
-    if (needsKey && !hasKeyItem(needsKey)) {
-      addLog(`You need key item ${needsKey} to enter ${camp.name || 'this camp'}.`, 'error');
-      return;
-    }
-    setCurrentCampId(camp.id);
-    setCurrentMob(null);
-    setMobHp(0);
-  }, [blockIfHardcoreDead, campsByZone, currentZoneId, hasKeyItem]);
-
-  useEffect(() => {
-    if (!currentZoneId && initialZoneId) {
-      setCurrentZoneId(initialZoneId);
-      const zoneCamps = campsByZone[initialZoneId] || [];
-      if (zoneCamps.length) {
-        handleCampChange(zoneCamps[0].id, initialZoneId);
-      }
-    }
-  }, [currentZoneId, initialZoneId, campsByZone, handleCampChange]);
 
   const serializeSlots = (slotArr) => {
     const rows = [];
@@ -654,61 +408,276 @@ export default function GrindQuest() {
   };
 
   const addItemToInventory = (item, qty = 1) => {
-    const addQty = Math.max(1, qty || 1);
+    setSlots((prev) => {
+      return addItemToInventoryUtil(prev, item, qty, {
+        items,
+        addLog,
+        slotsRef,
+        scheduleSave
+      });
+    });
+  };
+
+  // Combat hook
+  const {
+    spawnMob,
+    attackMob,
+    handleMobDeath,
+    handleDeath,
+    fleeCombat,
+    toggleSit: combatToggleSit,
+    handleUseSkill,
+    isSkillOnCooldown,
+    getResistValue,
+    mitigateSpellDamage,
+    blockIfHardcoreDead,
+    playerEffects,
+    mobEffects,
+    getStatModifiers,
+    setAutoAttackChain
+  } = useCombat({
+    // Combat state
+    currentMob,
+    setCurrentMob,
+    mobHp,
+    setMobHp,
+    mobMana,
+    setMobMana,
+    mobEndurance,
+    setMobEndurance,
+    inCombat,
+    setInCombat,
+    isSitting,
+    setIsSitting,
+    isAutoAttack,
+    setIsAutoAttack,
+    fleeExhausted,
+    setFleeExhausted,
+
+    // Player state
+    hp,
+    setHp,
+    mana,
+    setMana,
+    endurance,
+    setEndurance,
+    maxHp,
+    maxMana,
+    maxEndurance,
+    level,
+    xp,
+    setXp,
+    setLevel,
+
+    // Character data
+    playerClass,
+    mode,
+    killedAt,
+    setKilledAt,
+    boundLevel,
+
+    // Stats - pass current statTotals (will be updated with modifiers)
+    derivedStats,
+    statTotals,
+    totalBonuses,
+
+    // Zone/Camp
+    currentZoneId,
+    setCurrentZoneId,
+    initialZoneId,
+    currentCampId,
+    campMembers,
+
+    // Loot/Items
+    items,
+    lootTables,
+    addItemToInventory,
+    createItemInstance,
+
+    // Currency
+    copper,
+    silver,
+    gold,
+    platinum,
+
+    // Cooldowns
+    skillCooldowns,
+    setSkillCooldowns,
+
+    // Utils
+    addLog,
+    scheduleSave,
+    xpNeeded,
+
+    // Refs
+    isDeadRef,
+    combatTimeout,
+    fleeExhaustTimeout
+  });
+
+  // Update getStatModifiers and playerEffects when useCombat provides them
+  useEffect(() => {
+    if (getStatModifiers) {
+      setGetStatModifiersFn(() => getStatModifiers);
+    }
+  }, [getStatModifiers]);
+
+  useEffect(() => {
+    if (playerEffects) {
+      setPlayerEffectsState(playerEffects);
+    }
+  }, [playerEffects]);
+
+  const handleCampChange = useCallback((campId, zoneIdOverride = null) => {
+    if (blockIfHardcoreDead('change camps')) return;
+    const zoneKey = zoneIdOverride || currentZoneId;
+    const zoneCamps = campsByZone[zoneKey] || [];
+    const camp = zoneCamps.find((c) => `${c.id}` === `${campId}`);
+    if (!camp) {
+      setCurrentCampId(null);
+      return;
+    }
+    const needsKey = camp.key_item;
+    if (needsKey && !hasKeyItem(needsKey)) {
+      addLog(`You need key item ${needsKey} to enter ${camp.name || 'this camp'}.`, 'error');
+      return;
+    }
+    setCurrentCampId(camp.id);
+    setCurrentMob(null);
+    setMobHp(0);
+  }, [blockIfHardcoreDead, campsByZone, currentZoneId, hasKeyItem, setCurrentCampId, setCurrentMob, setMobHp, addLog]);
+
+  useEffect(() => {
+    if (!currentZoneId && initialZoneId) {
+      setCurrentZoneId(initialZoneId);
+      const zoneCamps = campsByZone[initialZoneId] || [];
+      if (zoneCamps.length) {
+        handleCampChange(zoneCamps[0].id, initialZoneId);
+      }
+    }
+  }, [currentZoneId, initialZoneId, campsByZone, handleCampChange, setCurrentZoneId]);
+
+  // canEquipItemInSlot imported from inventoryManager
+
+  const handleRightClickStack = (slotIndex) => {
+    if (blockIfHardcoreDead('split items')) return;
+
+    const item = slots[slotIndex];
+    if (!item || !item.stackable || item.quantity <= 1) return;
+
+    // Split in half (rounded down)
+    const splitQty = Math.floor(item.quantity / 2);
+    const remainingQty = item.quantity - splitQty;
+
     setSlots((prev) => {
       const next = [...prev];
 
-      for (let i = CARRY_START; i < next.length; i += 1) {
-        const slot = next[i];
-        if (slot && slot.baseItemId === item.baseItemId) {
-          next[i] = { ...slot, quantity: (slot.quantity || 1) + addQty };
-          slotsRef.current = next;
-          scheduleSave({ inventory: true });
-          return next;
-        }
-      }
-
+      // Find an empty inventory slot for the split stack
       const emptyIdx = next.findIndex((s, idx) => idx >= CARRY_START && !s);
-      if (emptyIdx !== -1) {
-        const base = items[item.baseItemId];
-        const bagSlots = base?.bagslots || base?.bagSlots || 0;
-        next[emptyIdx] = { ...item, quantity: addQty, bagSlots, contents: bagSlots ? Array(bagSlots).fill(null) : null };
-        slotsRef.current = next;
-        scheduleSave({ inventory: true });
-        return next;
+
+      if (emptyIdx === -1) {
+        addLog('No empty inventory slots to split stack!', 'error');
+        return prev;
       }
 
-      // Try bags
-      for (let i = 0; i < next.length; i += 1) {
-        const bag = next[i];
-        if (!bag || !bag.bagSlots || !bag.contents) continue;
-        // stack inside bag
-        const stackIdx = bag.contents.findIndex((c) => c && c.baseItemId === item.baseItemId);
-        if (stackIdx !== -1) {
-          const updatedBag = { ...bag, contents: [...bag.contents] };
-          updatedBag.contents[stackIdx] = {
-            ...updatedBag.contents[stackIdx],
-            quantity: (updatedBag.contents[stackIdx].quantity || 1) + addQty
-          };
-          next[i] = updatedBag;
-          slotsRef.current = next;
-          scheduleSave({ inventory: true });
-          return next;
-        }
-        const emptyBagIdx = bag.contents.findIndex((c) => !c);
-        if (emptyBagIdx !== -1) {
-          const updatedBag = { ...bag, contents: [...bag.contents] };
-          updatedBag.contents[emptyBagIdx] = { ...item, quantity: addQty };
-          next[i] = updatedBag;
-          slotsRef.current = next;
-          scheduleSave({ inventory: true });
-          return next;
-        }
-      }
+      // Reduce the source stack
+      next[slotIndex] = { ...item, quantity: remainingQty };
 
-      addLog('Inventory full!', 'error');
-      return prev;
+      // Create new stack in empty slot
+      next[emptyIdx] = {
+        ...item,
+        quantity: splitQty,
+        id: `${item.baseItemId}-${Date.now()}-${Math.random().toString(16).slice(2)}`
+      };
+
+      addLog(`Split ${item.name} into stacks of ${remainingQty} and ${splitQty}.`, 'system');
+
+      slotsRef.current = next;
+      scheduleSave({ inventory: true });
+      return next;
     });
+  };
+
+  const handleSlotClick = (slotIndex) => {
+    if (blockIfHardcoreDead('move items')) return;
+
+    // If nothing is selected, select this slot
+    if (selectedSlot === null) {
+      const item = slots[slotIndex];
+      if (item) {
+        setSelectedSlot(slotIndex);
+      }
+      return;
+    }
+
+    // If clicking the same slot, deselect
+    if (selectedSlot === slotIndex) {
+      setSelectedSlot(null);
+      return;
+    }
+
+    // Otherwise, try to move/swap items
+    const sourceItem = slots[selectedSlot];
+    const targetItem = slots[slotIndex];
+
+    // Check if the source item can be equipped in the target slot
+    if (!canEquipItemInSlot(sourceItem, slotIndex)) {
+      addLog(`${sourceItem.name} cannot be equipped in that slot.`, 'error');
+      setSelectedSlot(null);
+      return;
+    }
+
+    // If swapping, check if target item can go in source slot
+    if (targetItem && !canEquipItemInSlot(targetItem, selectedSlot)) {
+      addLog(`Cannot swap: ${targetItem.name} cannot be equipped in that slot.`, 'error');
+      setSelectedSlot(null);
+      return;
+    }
+
+    setSlots((prev) => {
+      const next = [...prev];
+
+      // If target is empty, just move
+      if (!targetItem) {
+        next[slotIndex] = sourceItem;
+        next[selectedSlot] = null;
+      }
+      // If both are the same stackable item, try to stack
+      else if (
+        sourceItem.stackable &&
+        sourceItem.baseItemId === targetItem.baseItemId
+      ) {
+        const maxStack = targetItem.maxStack || 1;
+        const currentQty = targetItem.quantity || 1;
+        const sourceQty = sourceItem.quantity || 1;
+        const canAdd = Math.min(sourceQty, maxStack - currentQty);
+
+        if (canAdd > 0) {
+          next[slotIndex] = { ...targetItem, quantity: currentQty + canAdd };
+          const remaining = sourceQty - canAdd;
+          if (remaining > 0) {
+            next[selectedSlot] = { ...sourceItem, quantity: remaining };
+          } else {
+            next[selectedSlot] = null;
+          }
+        } else {
+          // Stack is full, swap them
+          next[slotIndex] = sourceItem;
+          next[selectedSlot] = targetItem;
+        }
+      }
+      // Otherwise, swap them
+      else {
+        next[slotIndex] = sourceItem;
+        next[selectedSlot] = targetItem;
+      }
+
+      slotsRef.current = next;
+      scheduleSave({ inventory: true });
+      return next;
+    });
+
+    setSelectedSlot(null);
   };
 
   const changeZone = (zoneId) => {
@@ -758,148 +727,6 @@ export default function GrindQuest() {
     );
   };
 
-  const handleDeath = (killerName = 'an enemy') => {
-    if (isDeadRef.current) return;
-    isDeadRef.current = true;
-
-    addLog(`You have been slain by ${killerName}!`, 'error');
-    setInCombat(false);
-    setIsSitting(false);
-    setIsAutoAttack(false);
-    setFleeExhausted(false);
-
-    if (autoAttackInterval.current) clearInterval(autoAttackInterval.current);
-    if (combatTimeout.current) clearTimeout(combatTimeout.current);
-    if (fleeExhaustTimeout.current) clearTimeout(fleeExhaustTimeout.current);
-
-    setCurrentMob(null);
-    setMobHp(0);
-
-    if (mode === 'hardcore') {
-      const deathTime = new Date().toISOString();
-      setKilledAt(deathTime);
-      addLog('Hardcore death! This character is permanently dead.', 'system');
-      setCurrentZoneId(initialZoneId);
-      setCurrentCampId(null);
-      scheduleSave({
-        character: {
-          killed_at: deathTime,
-          zone_id: initialZoneId
-        }
-      });
-      setLeaderboardCharacters((prev) => {
-        if (!characterId) return prev;
-        const filtered = (prev || []).filter((row) => row.id !== characterId);
-        return [
-          {
-            id: characterId,
-            name: characterName,
-            level,
-            xp,
-            mode,
-            race_id: raceId,
-            deity_id: deityId,
-            class_id: playerClassKey,
-            killed_at: deathTime,
-            updated_at: deathTime
-          },
-          ...filtered
-        ];
-      });
-    } else {
-      setLevel(boundLevel);
-      setXp(0);
-      setHp(maxHp);
-      setMana(maxMana);
-      addLog(`You return to your bind at level ${boundLevel}.`, 'system');
-      scheduleSave({
-        character: {
-          level: boundLevel,
-          xp: 0,
-          zone_id: currentZoneId,
-          currency: { copper, silver, gold, platinum }
-        },
-        inventory: true
-      });
-      setLeaderboardCharacters((prev) => {
-        if (!characterId) return prev;
-        const filtered = (prev || []).filter((row) => row.id !== characterId);
-        return [
-          {
-            id: characterId,
-            name: characterName,
-            level: boundLevel,
-            xp: 0,
-            mode,
-            race_id: raceId,
-            deity_id: deityId,
-            class_id: playerClassKey,
-            killed_at: null,
-            updated_at: new Date().toISOString()
-          },
-          ...filtered
-        ];
-      });
-    }
-
-    setTimeout(() => {
-      isDeadRef.current = false;
-      if (!isHardcoreDead) {
-        spawnMob();
-      }
-    }, 1000);
-  };
-
-  const attackMob = () => {
-    if (blockIfHardcoreDead('attack')) return;
-    if (!currentMob || mobHp <= 0) return;
-
-    setInCombat(true);
-    setIsSitting(false);
-
-    if (combatTimeout.current) clearTimeout(combatTimeout.current);
-    combatTimeout.current = setTimeout(() => setInCombat(false), 6000);
-
-    const base = Math.floor(derivedStats.minDamage + Math.random() * (derivedStats.maxDamage - derivedStats.minDamage + 1));
-    const mitigation = Math.min(base - 1, Math.floor((currentMob.ac || 0) / 10));
-    const damage = Math.max(1, base - mitigation);
-    const newHp = Math.max(0, mobHp - damage);
-    setMobHp(newHp);
-    addLog(`You hit ${currentMob.name} for ${damage} damage!`, 'damage');
-
-    if (newHp === 0) {
-      handleMobDeath();
-    } else {
-      setTimeout(() => {
-        if (newHp > 0) {
-          const mobDamage = currentMob.damage;
-          const dodgeChance = Math.min(0.3, (statTotals.agi || 0) * 0.002);
-          if (Math.random() < dodgeChance) {
-            addLog(`You dodge ${currentMob.name}'s attack!`, 'system');
-            return;
-          }
-          const isSpell = currentMob.damage_type === 'spell' || currentMob.damageType === 'spell';
-          const school = currentMob.damage_school || currentMob.damageSchool || 'magic';
-          let finalMobDmg;
-          if (isSpell) {
-            const { final } = mitigateSpellDamage(mobDamage, school);
-            finalMobDmg = Math.max(0, final);
-          } else {
-            const mitigation = Math.min(mobDamage - 1, Math.floor((totalBonuses.ac || 0) / 10));
-            finalMobDmg = Math.max(1, mobDamage - mitigation);
-          }
-          setHp(prev => {
-            const updatedHp = Math.max(0, prev - finalMobDmg);
-            if (updatedHp === 0) {
-              setTimeout(() => handleDeath(currentMob.name), 0);
-            }
-            return updatedHp;
-          });
-          addLog(`${currentMob.name} hits YOU for ${finalMobDmg} ${isSpell ? `${school} ` : ''}damage!`, 'mobattack');
-        }
-      }, 500);
-    }
-  };
 
   const toggleAutoAttack = () => {
     if (blockIfHardcoreDead('toggle auto-attack')) return;
@@ -907,64 +734,9 @@ export default function GrindQuest() {
     addLog(isAutoAttack ? 'Auto-attack disabled' : 'Auto-attack enabled', 'system');
   };
 
-  const fleeCombat = () => {
-    if (blockIfHardcoreDead('flee')) return;
-    if (!currentMob) return;
-
-    const applyFleeDebuff = () => {
-      setFleeExhausted(true);
-      if (fleeExhaustTimeout.current) clearTimeout(fleeExhaustTimeout.current);
-      fleeExhaustTimeout.current = setTimeout(() => setFleeExhausted(false), 10000);
-      addLog('You feel exhausted from fleeing. Regen slowed briefly.', 'system');
-    };
-
-    const engaged = inCombat || mobHp < currentMob.hp;
-    const runSpeed = playerClass.runSpeed ?? 1;
-    let successChance = engaged ? 0.65 : 1;
-    successChance = Math.min(0.95, Math.max(0.2, successChance + (runSpeed - 1) * 0.05));
-
-    if (engaged && Math.random() > successChance) {
-      addLog(`You fail to escape ${currentMob.name}!`, 'error');
-      applyFleeDebuff();
-
-      if (engaged) {
-        const mobDamage = currentMob.damage;
-        setHp(prev => {
-          const updatedHp = Math.max(0, prev - mobDamage);
-          if (updatedHp === 0) {
-            setTimeout(() => handleDeath(currentMob.name), 0);
-          }
-          return updatedHp;
-        });
-        addLog(`${currentMob.name} strikes you as you flee for ${mobDamage} damage!`, 'mobattack');
-      }
-      return;
-    }
-
-    addLog(`You flee from ${currentMob.name}!`, 'flee');
-    setInCombat(false);
-    setIsSitting(false);
-    if (autoAttackInterval.current) {
-      clearInterval(autoAttackInterval.current);
-      setIsAutoAttack(false);
-    }
-
-    applyFleeDebuff();
-
-    spawnMob();
-  };
-
-  const toggleSit = () => {
-    if (inCombat) {
-      addLog('You cannot sit while in combat!', 'error');
-      return;
-    }
-    setIsSitting(!isSitting);
-    addLog(isSitting ? 'You stand up.' : 'You sit down to rest.', 'system');
-  };
-
   useEffect(() => {
     spawnMob();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentZoneId, currentCampId]);
 
   useEffect(() => {
@@ -1015,7 +787,6 @@ export default function GrindQuest() {
       setIsCreatingCharacter(false);
       setLoadError('');
       setKilledAt(null);
-      setLeaderboardCharacters([]);
       return;
     }
 
@@ -1046,457 +817,73 @@ export default function GrindQuest() {
     };
 
     loadCharacters();
-    const loadLeaderboard = async () => {
-      try {
-        setIsLeaderboardLoading(true);
-        const rows = await fetchLeaderboardCharacters();
-        setLeaderboardCharacters(rows || []);
-      } catch (err) {
-        console.error('Failed to load leaderboard', err);
-      } finally {
-        setIsLeaderboardLoading(false);
-      }
-    };
-    loadLeaderboard();
   }, [user]);
 
-  useEffect(() => {
-    if (!characterId || !user) return;
-    if (!items || !Object.keys(items || {}).length) return;
-    if (!skills || skills.length === 0) return;
-    const loadProfile = async () => {
-      setIsProfileLoading(true);
-      try {
-        const { character, inventory: inv, spells: learnedRows } = await loadCharacter(characterId);
-        const classKey = character.class_id || character.class || '';
-        const loadedClass = classes[classKey] || {};
-        setCharacterName(character.name || '');
-        setPlayerClassKey(classKey);
-        setMode(character.mode || 'normal');
-        setKilledAt(character.killed_at || null);
-        setRaceId(character.race_id || null);
-        setDeityId(character.deity_id || null);
-        setLevel(character.level);
-        setXp(character.xp);
-        setCurrentZoneId(character.zone_id || initialZoneId);
-        setCopper(character.currency?.copper || 0);
-        setSilver(character.currency?.silver || 0);
-        setGold(character.currency?.gold || 0);
-        setPlatinum(character.currency?.platinum || 0);
-        const learned = (learnedRows || []).reduce((arr, row) => {
-          const data = skills.find((s) => s.id === row.skill_id);
-          if (!data) return arr;
-          arr.push({
-            ...data,
-            ability_slot: row.ability_slot || 0,
-            spell_slot: row.spell_slot || 0,
-            scribe_slot: row.scribe_slot || 0,
-            rank: row.rank || data.rank || 1,
-            learned_at: row.learned_at
-          });
-          return arr;
-        }, []);
-        setKnownSkills(learned);
-        setBaseStats({
-          str: character.str_base || 0,
-          sta: character.sta_base || 0,
-          agi: character.agi_base || 0,
-          dex: character.dex_base || 0,
-          int: character.int_base || 0,
-          wis: character.wis_base || 0,
-          cha: character.cha_base || 0
-        });
-        const normalizedInv = (inv || []).map((row) => {
-          const baseKey = row.base_item_id || row.baseItemId;
-          const base = items[baseKey] || {};
-          const bagSlots = base.bagslots || base.bagSlots || row.item_data?.bagslots || row.item_data?.bagSlots || 0;
-          return {
-            id: row.id || `${baseKey}-${Math.random().toString(16).slice(2)}`,
-            baseItemId: base.id || baseKey,
-            name: base.name || row.name || baseKey,
-            slot: base.slot || row.slot || 'misc',
-            bonuses: base.bonuses || {},
-            iconIndex: base.iconIndex ?? null,
-            quantity: row.quantity || 1,
-            slot_id: row.slot_id || null,
-            container_id: row.container_id || null,
-            bagSlots,
-            contents: bagSlots ? Array(bagSlots).fill(null) : null
-          };
-        });
-
-        const nextSlots = Array(slotOrder.length).fill(null);
-        const bagLookup = {};
-
-        // place top-level items
-        normalizedInv
-          .filter((i) => !i.container_id)
-          .forEach((item) => {
-            const idx = item.slot_id ? slotOrder.indexOf(item.slot_id) : -1;
-            const targetIdx = idx !== -1 ? idx : nextSlots.findIndex((s, i) => i >= CARRY_START && !s);
-            if (targetIdx !== -1) {
-              nextSlots[targetIdx] = item;
-              bagLookup[item.id] = item;
-            }
-          });
-
-        // place bag children
-        normalizedInv
-          .filter((i) => i.container_id)
-          .forEach((child) => {
-            const parent = bagLookup[child.container_id];
-            if (!parent || !parent.contents) return;
-            const slotNum = child.slot_id ? parseInt(String(child.slot_id).replace(/\D/g, ''), 10) : NaN;
-            const pos =
-              Number.isFinite(slotNum) && slotNum > 0 && slotNum <= parent.contents.length
-                ? slotNum - 1
-                : parent.contents.findIndex((c) => !c);
-            if (pos === -1) return;
-            parent.contents[pos] = child;
-          });
-
-        setSlots(nextSlots);
-        slotsRef.current = nextSlots;
-        justLoadedRef.current = true;
-        setMaxHp(loadedClass.baseHp || 0);
-        setHp(loadedClass.baseHp || 0);
-        setMaxMana(loadedClass.baseMana || 0);
-        setMana(loadedClass.baseMana || 0);
-        const loadedEnd = loadedClass.isCaster ? 0 : (loadedClass.baseMana || 100);
-        setMaxEndurance(loadedEnd);
-        setEndurance(loadedEnd);
-        setIsSelectingCharacter(false);
-        setIsCreatingCharacter(false);
-        setLoadError('');
-        addLog('Profile loaded.', 'system');
-      } catch (err) {
-        console.error(err);
-        addLog('Failed to load profile.', 'error');
-        setLoadError('Failed to load profile. Please re-select a character.');
-        setIsSelectingCharacter(true);
-        setCharacterId(null);
-      } finally {
-        setIsProfileLoading(false);
-      }
-    };
-    loadProfile();
-  }, [characterId, user, initialZoneId]);
+  // Character loader hook
+  useCharacterLoader({
+    characterId,
+    user,
+    items,
+    skills,
+    classes,
+    initialZoneId,
+    setCharacterName,
+    setPlayerClassKey,
+    setMode,
+    setKilledAt,
+    setRaceId,
+    setDeityId,
+    setLevel,
+    setXp,
+    setCurrentZoneId,
+    setCopper,
+    setSilver,
+    setGold,
+    setPlatinum,
+    setKnownSkills,
+    setBaseStats,
+    setSlots,
+    slotsRef,
+    justLoadedRef,
+    setMaxHp,
+    setHp,
+    setMaxMana,
+    setMana,
+    setMaxEndurance,
+    setEndurance,
+    setIsSelectingCharacter,
+    setIsCreatingCharacter,
+    setLoadError,
+    setIsProfileLoading,
+    addLog
+  });
 
   const displayMinDamage = derivedStats.minDamage;
   const displayMaxDamage = derivedStats.maxDamage;
 
-  const abilitySlotCount = 9;
-  const spellSlotCount = 9;
-
-  const builtInAbilities = useMemo(() => ([
-    { id: 'builtin-attack', name: 'Attack', iconIndex: 0, type: 'builtin' },
-    { id: 'builtin-auto', name: 'Auto', iconIndex: 1, type: 'builtin' },
-    { id: 'builtin-sit', name: isSitting ? 'Stand' : 'Sit', iconIndex: 22, type: 'builtin' },
-    { id: 'builtin-flee', name: 'Flee', iconIndex: 48, type: 'builtin' }
-  ]), [isSitting]);
-
-  const builtInAbilityMap = useMemo(
-    () => builtInAbilities.reduce((acc, ability) => {
-      acc[ability.id] = ability;
-      return acc;
-    }, {}),
-    [builtInAbilities]
-  );
-
-  const [builtinAbilitySlots, setBuiltinAbilitySlots] = useState(() => {
-    const base = Array(abilitySlotCount).fill(null);
-    const defaults = ['builtin-attack', 'builtin-auto', 'builtin-sit', 'builtin-flee'];
-    defaults.forEach((id, idx) => {
-      if (idx < base.length) base[idx] = id;
-    });
-    return base;
+  // Skill slots hook
+  const {
+    abilitySlots: mergedAbilitySlots,
+    spellSlots,
+    abilityOptions,
+    assignAbilityToSlot,
+    assignSpellToSlot,
+    clearAbilitySlot,
+    clearSpellSlot
+  } = useSkillSlots({
+    isSitting,
+    characterId,
+    knownSkills,
+    setKnownSkills,
+    isAutoAttack,
+    currentMob,
+    mobHp,
+    isSkillOnCooldown,
+    handleUseSkill,
+    autoAttackInterval,
+    setAutoAttackChain
   });
 
-  const abilitySlots = useMemo(() => {
-    const slots = Array(abilitySlotCount).fill(null);
-    knownSkills
-      .filter((s) => s.type !== 'spell')
-      .forEach((s) => {
-        const idx = (s.ability_slot || 0) - 1;
-        if (idx >= 0 && idx < slots.length) {
-          slots[idx] = s;
-        }
-      });
-    return slots;
-  }, [knownSkills, abilitySlotCount]);
-
-  const mergedAbilitySlots = useMemo(() => {
-    const combined = Array(abilitySlotCount).fill(null);
-    abilitySlots.forEach((slot, idx) => { combined[idx] = slot; });
-    builtinAbilitySlots.forEach((slotId, idx) => {
-      if (slotId && builtInAbilityMap[slotId]) combined[idx] = builtInAbilityMap[slotId];
-    });
-    return combined;
-  }, [abilitySlots, builtinAbilitySlots, abilitySlotCount, builtInAbilityMap]);
-
-  const abilityOptions = useMemo(() => ([
-    ...builtInAbilities,
-    ...knownSkills.filter((s) => s.type !== 'spell')
-  ]), [builtInAbilities, knownSkills]);
-
-  useEffect(() => {
-    const runAutoAbilities = () => {
-      if (!currentMob || mobHp <= 0) return;
-      const autoIdx = mergedAbilitySlots.findIndex((s) => s?.id === 'builtin-auto');
-      if (autoIdx === -1) return;
-      const autoChain = mergedAbilitySlots.slice(0, autoIdx);
-      autoChain.forEach((skill) => {
-        if (!skill) return;
-        if (isSkillOnCooldown(skill)) return;
-        handleUseSkill(skill);
-      });
-    };
-
-    if (isAutoAttack && currentMob && mobHp > 0) {
-      runAutoAbilities();
-      autoAttackInterval.current = setInterval(() => {
-        runAutoAbilities();
-      }, 250);
-    } else {
-      if (autoAttackInterval.current) {
-        clearInterval(autoAttackInterval.current);
-      }
-    }
-
-    return () => {
-      if (autoAttackInterval.current) {
-        clearInterval(autoAttackInterval.current);
-      }
-    };
-  }, [isAutoAttack, currentMob, mobHp, mergedAbilitySlots, derivedStats.attackDelay]);
-
-  const spellSlots = useMemo(() => {
-    const slots = Array(spellSlotCount).fill(null);
-    knownSkills
-      .filter((s) => s.type === 'spell')
-      .forEach((s) => {
-        const idx = (s.spell_slot || 0) - 1;
-        if (idx >= 0 && idx < slots.length) {
-          slots[idx] = s;
-        }
-      });
-    return slots;
-  }, [knownSkills, spellSlotCount]);
-
-  const persistSlots = async (nextKnown) => {
-    setKnownSkills(nextKnown);
-    const abilityPayload = Array.from({ length: abilitySlotCount }).map((_, idx) => {
-      const skill = nextKnown.find((s) => (s.type !== 'spell') && s.ability_slot === idx + 1);
-      return skill ? { skill_id: skill.id, ability_slot: idx + 1 } : null;
-    }).filter(Boolean);
-    const spellPayload = Array.from({ length: spellSlotCount }).map((_, idx) => {
-      const skill = nextKnown.find((s) => s.type === 'spell' && s.spell_slot === idx + 1);
-      return skill ? { skill_id: skill.id, spell_slot: idx + 1 } : null;
-    }).filter(Boolean);
-    try {
-      await saveSpellSlots(characterId, { abilitySlots: abilityPayload, spellSlots: spellPayload });
-    } catch (err) {
-      console.error('Failed to save spell slots', err);
-    }
-  };
-
-  const assignAbilityToSlot = (slotIdx, skillId) => {
-    if (builtInAbilityMap[skillId]) {
-      setBuiltinAbilitySlots((prev) => {
-        const next = [...prev];
-        next.forEach((slotId, idx) => {
-          if (slotId === skillId) next[idx] = null;
-        });
-        next[slotIdx - 1] = skillId;
-        return next;
-      });
-      setKnownSkills((prev) => {
-        const next = prev.map((s) => ({ ...s }));
-        next.forEach((s) => {
-          if (s.type !== 'spell' && s.ability_slot === slotIdx) s.ability_slot = 0;
-        });
-        persistSlots(next);
-        return next;
-      });
-      return;
-    }
-
-    setBuiltinAbilitySlots((prev) => {
-      const next = [...prev];
-      next[slotIdx - 1] = null;
-      return next;
-    });
-
-    setKnownSkills((prev) => {
-      const next = prev.map((s) => ({ ...s }));
-      // clear any skill currently in this slot
-      next.forEach((s) => {
-        if (s.type !== 'spell' && s.ability_slot === slotIdx) s.ability_slot = 0;
-      });
-      // clear existing slot of the chosen skill
-      const skill = next.find((s) => s.id === skillId);
-      if (skill) {
-        if (skill.ability_slot) skill.ability_slot = 0;
-        skill.ability_slot = slotIdx;
-      }
-      persistSlots(next);
-      return next;
-    });
-  };
-
-  const clearAbilitySlot = (slotIdx) => {
-    setBuiltinAbilitySlots((prev) => {
-      const next = [...prev];
-      next[slotIdx - 1] = null;
-      return next;
-    });
-
-    setKnownSkills((prev) => {
-      const next = prev.map((s) => ({ ...s }));
-      next.forEach((s) => {
-        if (s.type !== 'spell' && s.ability_slot === slotIdx) s.ability_slot = 0;
-      });
-      persistSlots(next);
-      return next;
-    });
-  };
-
-  const assignSpellToSlot = (slotIdx, skillId) => {
-    setKnownSkills((prev) => {
-      const next = prev.map((s) => ({ ...s }));
-      next.forEach((s) => {
-        if (s.type === 'spell' && s.spell_slot === slotIdx) s.spell_slot = 0;
-      });
-      const skill = next.find((s) => s.id === skillId);
-      if (skill) {
-        if (skill.spell_slot) skill.spell_slot = 0;
-        skill.spell_slot = slotIdx;
-      }
-      persistSlots(next);
-      return next;
-    });
-  };
-
-  const clearSpellSlot = (slotIdx) => {
-    setKnownSkills((prev) => {
-      const next = prev.map((s) => ({ ...s }));
-      next.forEach((s) => {
-        if (s.type === 'spell' && s.spell_slot === slotIdx) s.spell_slot = 0;
-      });
-      persistSlots(next);
-      return next;
-    });
-  };
-
-  const builtInAbilityHandlers = {
-    'builtin-attack': attackMob,
-    'builtin-auto': () => setIsAutoAttack((prev) => !prev),
-    'builtin-sit': toggleSit,
-    'builtin-flee': fleeCombat
-  };
-
-  const isSkillOnCooldown = (skill) => {
-    const until = skillCooldowns[skill.id];
-    return until && until > Date.now();
-  };
-
-  const handleUseSkill = (skill) => {
-    if (blockIfHardcoreDead('use skills')) return;
-    if (!skill) return;
-
-    if (builtInAbilityHandlers[skill.id]) {
-      builtInAbilityHandlers[skill.id]();
-      if (skill.id === 'builtin-attack') {
-        setSkillCooldowns((prev) => ({
-          ...prev,
-          [skill.id]: Date.now() + derivedStats.attackDelay
-        }));
-      }
-      return;
-    }
-
-    if (isSkillOnCooldown(skill)) {
-      addLog(`${skill.name} is on cooldown.`, 'error');
-      return;
-    }
-    const costMana = (skill.resource_cost && skill.resource_cost.mana) || 0;
-    const costEndurance = (skill.resource_cost && (skill.resource_cost.endurance || skill.resource_cost.stamina || 0)) || 0;
-    if (costMana > mana) {
-      addLog('Not enough mana.', 'error');
-      return;
-    }
-    if (costEndurance > endurance) {
-      addLog('Not enough endurance.', 'error');
-      return;
-    }
-    if (costMana > 0) {
-      setMana((m) => Math.max(0, m - costMana));
-    }
-    if (costEndurance > 0) {
-      setEndurance((e) => Math.max(0, e - costEndurance));
-    }
-    if (skill.cooldown_seconds) {
-      setSkillCooldowns((prev) => ({ ...prev, [skill.id]: Date.now() + skill.cooldown_seconds * 1000 }));
-    }
-
-    const effect = skill.effect || {};
-    if (effect.type === 'damage') {
-      if (!currentMob || mobHp <= 0) {
-        addLog('No target to hit.', 'error');
-        return;
-      }
-      setInCombat(true);
-      setIsSitting(false);
-      const base = effect.base || 0;
-      const scaling = effect.scaling?.coef ? Math.floor((statTotals[effect.scaling.stat] || 0) * effect.scaling.coef) : 0;
-      const spellModPct = (derivedStats.spellDmgMod || 0);
-      const preMit = Math.max(1, Math.floor((base + scaling) * (1 + spellModPct / 100)));
-      const mitigation = Math.min(preMit - 1, Math.floor((currentMob.ac || 0) / 10));
-      const dmg = Math.max(1, preMit - mitigation);
-      const newHp = Math.max(0, mobHp - dmg);
-      setMobHp(newHp);
-      addLog(`${skill.name} hits ${currentMob.name} for ${dmg} damage!`, 'damage');
-      if (newHp === 0) {
-        handleMobDeath();
-      } else {
-        setTimeout(() => {
-          if (!currentMob) return;
-          const mobDamage = currentMob.damage;
-          const dodgeChance = Math.min(0.3, (statTotals.agi || 0) * 0.002);
-          if (Math.random() < dodgeChance) {
-            addLog(`You dodge ${currentMob.name}'s attack!`, 'system');
-            return;
-          }
-          const isSpell = currentMob.damage_type === 'spell' || currentMob.damageType === 'spell';
-          const school = currentMob.damage_school || currentMob.damageSchool || 'magic';
-          let finalMobDmg;
-          if (isSpell) {
-            const { final } = mitigateSpellDamage(mobDamage, school);
-            finalMobDmg = Math.max(0, final);
-          } else {
-            const mitigation = Math.min(mobDamage - 1, Math.floor((totalBonuses.ac || 0) / 10));
-            finalMobDmg = Math.max(1, mobDamage - mitigation);
-          }
-          setHp(prev => {
-            const updatedHp = Math.max(0, prev - finalMobDmg);
-            if (updatedHp === 0) {
-              setTimeout(() => handleDeath(currentMob.name), 0);
-            }
-            return updatedHp;
-          });
-          addLog(`${currentMob.name} hits YOU for ${finalMobDmg} ${isSpell ? `${school} ` : ''}damage!`, 'mobattack');
-        }, 500);
-      }
-    } else if (effect.type === 'heal' || effect.type === 'hot') {
-      const base = effect.base || effect.tick || 0;
-      const healModPct = derivedStats.healMod || 0;
-      const healAmount = Math.max(1, Math.floor(base * (1 + healModPct / 100)));
-      setHp((prev) => Math.min(maxHp, prev + healAmount));
-      addLog(`You cast ${skill.name} and heal for ${healAmount}!`, 'heal');
-    } else {
-      addLog(`${skill.name} used.`, 'system');
-    }
-  };
 
   const handleAuthSubmit = async ({ email, password, isLogin, onStatus }) => {
     try {
@@ -1680,7 +1067,6 @@ export default function GrindQuest() {
               characterName={characterName}
               playerClass={playerClass}
               level={level}
-              characterName={characterName}
               hp={hp}
               maxHp={maxHp}
               mana={mana}
@@ -1705,6 +1091,11 @@ export default function GrindQuest() {
               currency={{ copper, silver, gold, platinum }}
               inventoryPreview={inventoryPreview}
               onInspectItem={setInspectedItem}
+              onSlotClick={handleSlotClick}
+              onSlotRightClick={handleRightClickStack}
+              onInventoryOpen={() => setIsInventoryModalOpen(true)}
+              selectedSlot={selectedSlot}
+              effects={playerEffects}
             />
           </div>
 
@@ -1719,6 +1110,7 @@ export default function GrindQuest() {
               maxMana={maxMana}
               endurance={endurance}
               maxEndurance={maxEndurance}
+              inCombat={inCombat}
               playerClass={playerClass}
               characterName={characterName}
               toggleAutoAttack={toggleAutoAttack}
@@ -1749,9 +1141,9 @@ export default function GrindQuest() {
               onCampChange={handleCampChange}
             />
             <HardcoreLeaderboard
-              hardcoreRuns={hardcoreLeaderboard}
-              normalRuns={normalLeaderboard}
-              isLoading={isLeaderboardLoading}
+              classNameMap={classNameMap}
+              raceMap={raceMap}
+              deityMap={deityMap}
             />
           </div>
         </div>
@@ -1781,6 +1173,17 @@ export default function GrindQuest() {
             </div>
           </div>
         </div>
+      )}
+
+      {isInventoryModalOpen && (
+        <InventoryModal
+          slots={slots}
+          onSlotClick={handleSlotClick}
+          onSlotRightClick={handleRightClickStack}
+          onInspectItem={setInspectedItem}
+          onClose={() => setIsInventoryModalOpen(false)}
+          selectedSlot={selectedSlot}
+        />
       )}
     </div>
   );
