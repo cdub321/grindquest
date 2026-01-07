@@ -1,88 +1,90 @@
 import { useEffect, useRef, useState } from 'react';
-import EqIcon from './EqIcon';
-import GemIcon, { GEM_CONFIG } from './GemIcon';
+import Icon, { GEM_CONFIG } from './Icon';
 
 export default function CombatConsole({
-  currentMob,
-  mobHp,
-  mobEffects = [],
-  toggleAutoAttack,
-  isAutoAttack,
-  abilitySlots = [],
-  spellSlots = [],
-  knownAbilities = [],
-  knownSpells = [],
+  current_mob,
+  mob_hp,
+  mob_effects = [],
+  toggle_auto_attack,
+  is_auto_attack,
+  ability_slots = [],
+  spell_slots = [],
+  known_abilities = [],
+  known_spells = [],
   level = 1,
-  characterName = '',
+  character_name = '',
   hp,
-  maxHp,
+  max_hp,
   mana,
-  maxMana,
+  max_mana,
   endurance,
-  maxEndurance,
-  playerClass,
+  max_endurance,
+  player_class,
+  resource_type = 'melee',
   // Interaction handled elsewhere; combat-only UI
-  onAssignAbility = () => {},
-  onAssignSpell = () => {},
-  onClearAbility = () => {},
-  onClearSpell = () => {},
-  onUseSkill,
+  on_assign_ability = () => {},
+  on_assign_spell = () => {},
+  on_clear_ability = () => {},
+  on_clear_spell = () => {},
+  on_use_skill,
   cooldowns = {},
   now = Date.now(),
-  combatLog = [],
-  inCombat = false,
-  castingState = null,
+  combat_log = [],
+  in_combat = false,
+  casting_state = null,
   effects = [],
-  isSitting = false
+  is_sitting = false,
+  is_stunned = null, // Function to check if player is stunned
+  is_attack_on_cooldown = null // Function to check if attack is on cooldown
 }) {
-  const logRef = useRef(null);
-  const [showConfig, setShowConfig] = useState(false);
-  const [portraitFailed, setPortraitFailed] = useState(false);
+  const log_ref = useRef(null);
+  const [show_config, set_show_config] = useState(false);
+  const [portrait_failed, set_portrait_failed] = useState(false);
   const FLEE_COOLDOWN_MS = 60000;
 
   useEffect(() => {
-    if (logRef.current) {
-      logRef.current.scrollTop = logRef.current.scrollHeight;
+    if (log_ref.current) {
+      log_ref.current.scrollTop = log_ref.current.scrollHeight;
     }
-  }, [combatLog]);
+  }, [combat_log]);
 
   useEffect(() => {
-    setPortraitFailed(false);
-  }, [currentMob?.id, currentMob?.name]);
+    set_portrait_failed(false);
+  }, [current_mob?.id, current_mob?.name]);
 
-  const getEffectIcon = (skill) => {
+  const get_effect_icon = (skill) => {
     if (!skill) return null;
-    return skill.spellIconIndex ?? skill.iconIndex ?? skill.spellicon ?? skill.icon ?? null;
+    return skill.spellIconIndex ?? skill.iconIndex ?? skill.icon_index ?? skill.spellicon ?? skill.icon ?? null;
   };
 
-  const getGemIcon = (skill) => {
+  const get_gem_icon = (skill) => {
     if (!skill) return null;
-    return skill.gemIconIndex ?? skill.gemicon ?? getEffectIcon(skill);
+    return skill.gemIconIndex ?? skill.gemicon ?? skill.icon_index ?? get_effect_icon(skill);
   };
 
-  const getSegmentSize = (maxValue) => {
-    if (!maxValue || maxValue <= 0) return 0;
-    if (maxValue <= 100) return 10;
-    if (maxValue <= 250) return 25;
-    if (maxValue <= 500) return 50;
-    if (maxValue <= 2000) return 100;
-    if (maxValue <= 5000) return 200;
-    if (maxValue <= 10000) return 500;
+  const get_segment_size = (max_value) => {
+    if (!max_value || max_value <= 0) return 0;
+    if (max_value <= 100) return 10;
+    if (max_value <= 250) return 25;
+    if (max_value <= 500) return 50;
+    if (max_value <= 2000) return 100;
+    if (max_value <= 5000) return 200;
+    if (max_value <= 10000) return 500;
     return 1000;
   };
 
-  const renderSegmentOverlay = (maxValue, options = {}) => {
-    const size = getSegmentSize(maxValue);
-    if (!size || size >= maxValue) return null;
-    const segmentPct = (size / maxValue) * 100;
-    const lineWidth = options.lineWidth ?? 2;
+  const render_segment_overlay = (max_value, options = {}) => {
+    const size = get_segment_size(max_value);
+    if (!size || size >= max_value) return null;
+    const segment_pct = (size / max_value) * 100;
+    const line_width = options.lineWidth ?? 2;
     const color = options.color ?? 'rgba(0,0,0,0.85)';
     const opacity = options.opacity ?? 0.8;
-    const segments = Math.floor(maxValue / size);
+    const segments = Math.floor(max_value / size);
 
     const lines = [];
     for (let i = 1; i <= segments; i++) {
-      const pct = Math.min(100, segmentPct * i);
+      const pct = Math.min(100, segment_pct * i);
       if (pct >= 100) continue; // Skip drawing on the far right edge
       lines.push(
         <div
@@ -91,8 +93,8 @@ export default function CombatConsole({
             position: 'absolute',
             top: 0,
             bottom: 0,
-            left: `calc(${pct}% - ${lineWidth / 2}px)`,
-            width: lineWidth,
+            left: `calc(${pct}% - ${line_width / 2}px)`,
+            width: line_width,
             background: color
           }}
         />
@@ -116,30 +118,31 @@ export default function CombatConsole({
     );
   };
 
-  const handleAbilityChange = (slotIdx, val) => {
+  const handle_ability_change = (slot_idx, val) => {
     if (!val) {
-      onClearAbility(slotIdx);
+      on_clear_ability(slot_idx);
       return;
     }
-    onAssignAbility(slotIdx, val);
+    on_assign_ability(slot_idx, val);
   };
 
-  const handleSpellChange = (slotIdx, val) => {
+  const handle_spell_change = (slot_idx, val) => {
     if (!val) {
-      onClearSpell(slotIdx);
+      on_clear_spell(slot_idx);
       return;
     }
-    onAssignSpell(slotIdx, val);
+    on_assign_spell(slot_idx, val);
   };
 
-  const renderConfigRow = (slotIdx, skill, options, onChange, onClear, isSpell = false) => {
-    const until = skill ? (cooldowns[skill.id] || 0) : 0;
+  const render_config_row = (slot_idx, skill, options, onChange, onClear, is_spell = false) => {
+    const skill_id = skill?.spell_id || skill?.id;
+    const until = skill ? (cooldowns[skill_id] || 0) : 0;
     const remaining = until > now ? Math.ceil((until - now) / 1000) : 0;
-    const isReady = remaining === 0;
-    const effectIcon = getEffectIcon(skill);
+    const is_ready = remaining === 0;
+    const effect_icon = get_effect_icon(skill);
     return (
       <div
-        key={`slot-${isSpell ? 'spell' : 'ability'}-${slotIdx}`}
+        key={`slot-${is_spell ? 'spell' : 'ability'}-${slot_idx}`}
         style={{
           display: 'grid',
           gridTemplateColumns: '44px 28px 1fr auto auto',
@@ -152,15 +155,15 @@ export default function CombatConsole({
           borderRadius: '6px'
         }}
         >
-          <div style={{ fontSize: '11px', color: '#d6c18a' }}>{isSpell ? 'Spell' : 'Skill'} {slotIdx}</div>
+          <div style={{ fontSize: '11px', color: '#d6c18a' }}>{is_spell ? 'Spell' : 'Skill'} {slot_idx}</div>
           <div style={{ width: 28, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            {skill && typeof effectIcon === 'number' ? (
-            <EqIcon index={effectIcon} size={24} cols={6} sheet="/stone-ui/spellicons/spells1.png" />
+            {skill && typeof effect_icon === 'number' ? (
+            <Icon index={effect_icon} size={24} cols={6} sheet="/stone-ui/spellicons/spells1.png" />
           ) : null}
           </div>
         <select
           value={skill?.id || ''}
-          onChange={(e) => onChange(slotIdx, e.target.value)}
+          onChange={(e) => onChange(slot_idx, e.target.value)}
           style={{
             width: '100%',
             background: '#1f1b18',
@@ -176,11 +179,11 @@ export default function CombatConsole({
           ))}
         </select>
         <div style={{ fontSize: '11px', color: '#c2b59b', textAlign: 'center' }}>
-          {skill ? (isReady ? 'Ready' : `${remaining}s`) : ''}
+          {skill ? (is_ready ? 'Ready' : `${remaining}s`) : ''}
         </div>
         <button
           className="btn warn"
-          onClick={() => onClear(slotIdx)}
+          onClick={() => onClear(slot_idx)}
           disabled={!skill}
           style={{ padding: '3px 6px', fontSize: '11px' }}
         >
@@ -190,25 +193,31 @@ export default function CombatConsole({
     );
   };
 
-  const abilityOptions = (knownAbilities || []).map((a) => ({ id: a.id, name: a.name }));
-  const spellOptions = (knownSpells || []).map((s) => ({ id: s.id, name: s.name }));
+  const ability_options = [
+    { id: 'mechanic-auto-attack', name: 'Auto Attack' },
+    ...(known_abilities || []).map((a) => ({ id: a.id, name: a.name }))
+  ];
+  const spell_options = [
+    { id: 'mechanic-auto-cast', name: 'Auto Cast' },
+    ...(known_spells || []).map((s) => ({ id: s.id, name: s.name }))
+  ];
 
-  const totalSpellSlots = [...spellSlots];
-  while (totalSpellSlots.length < 6) totalSpellSlots.push(null);
-  const totalAbilitySlots = [...abilitySlots];
-  while (totalAbilitySlots.length < 6) totalAbilitySlots.push(null);
-  const displayPlayerName = (characterName || '').trim() || 'Unnamed';
+  const total_spell_slots = [...spell_slots];
+  while (total_spell_slots.length < 6) total_spell_slots.push(null);
+  const total_ability_slots = [...ability_slots];
+  while (total_ability_slots.length < 6) total_ability_slots.push(null);
+  const display_player_name = (character_name || '').trim() || 'Unnamed';
 
-  const primarySpellSlots = totalSpellSlots.slice(0, 6);
-  const allAbilitySlots = totalAbilitySlots.slice(0, 6);
+  const primary_spell_slots = total_spell_slots.slice(0, 6);
+  const all_ability_slots = total_ability_slots.slice(0, 6);
 
-  const getConInfo = () => {
-    if (!currentMob) return null;
-    const mobLevel = Number(currentMob.level);
-    if (!Number.isFinite(mobLevel)) {
+  const get_con_info = () => {
+    if (!current_mob) return null;
+    const mob_level = Number(current_mob.level);
+    if (!Number.isFinite(mob_level)) {
       throw new Error('Mob level missing or invalid');
     }
-    const diff = mobLevel - level;
+    const diff = mob_level - level;
     if (diff >= 8) return { label: 'Maroon', color: '#4a041b' };
     if (diff >= 4) return { label: 'Red', color: '#b91c1c' };
     if (diff >= 1) return { label: 'Yellow', color: '#f59e0b' };
@@ -218,8 +227,8 @@ export default function CombatConsole({
     if (diff >= -8) return { label: 'Green', color: '#10b981' };
     return { label: 'Gray', color: '#9ca3af' };
   };
-  const con = getConInfo();
-  const getMobPortrait = (mob) => {
+  const con = get_con_info();
+  const get_mob_portrait = (mob) => {
     if (!mob) return null;
     const race = mob.race_id ?? mob.raceId ?? 1;
     const gender = mob.gender ?? 0;
@@ -227,122 +236,145 @@ export default function CombatConsole({
     return `/stone-ui/raceimages/${race}_${gender}_${texture}_0.jpg`;
   };
 
-  const mobPortraitSrc = currentMob ? getMobPortrait(currentMob) : null;
-  const fallbackPortrait = '/stone-ui/raceimages/0_0_1_0.jpg';
+  const mob_portrait_src = current_mob ? get_mob_portrait(current_mob) : null;
+  const fallback_portrait = '/stone-ui/raceimages/0_0_1_0.jpg';
 
-  const renderUseButton = (skill, onUse, onClear, isSpell = false) => {
-    const until = skill ? (cooldowns[skill.id] || 0) : 0;
-    const remainingMs = until > now ? until - now : 0;
-    const remaining = remainingMs > 0 ? Math.ceil(remainingMs / 1000) : 0;
-    const isReady = remaining === 0;
-    const isCasting = castingState?.skillId === skill?.id;
-    const castProgress = (() => {
-      if (!isCasting || !castingState?.durationMs) return 0;
-      const pct = 1 - Math.max(0, (castingState.endsAt - now) / castingState.durationMs);
+  const render_use_button = (skill, on_use, on_clear, is_spell = false) => {
+    const skill_id = skill?.spell_id || skill?.id;
+    const until = skill ? (cooldowns[skill_id] || 0) : 0;
+    const remaining_ms = until > now ? until - now : 0;
+    const remaining = remaining_ms > 0 ? Math.ceil(remaining_ms / 1000) : 0;
+    const is_ready = remaining === 0;
+    const is_casting = casting_state?.skillId === skill?.id;
+    const cast_progress = (() => {
+      if (!is_casting || !casting_state?.durationMs) return 0;
+      const pct = 1 - Math.max(0, (casting_state.endsAt - now) / casting_state.durationMs);
       return Math.max(0, Math.min(1, pct));
     })();
-    const isFlee = skill?.id === 'builtin-flee';
-    const isAttack = skill?.id === 'builtin-attack';
-    const isDisabledByAutoAttack = isAttack && isAutoAttack;
-    const fleeCooldownPct = isFlee && remainingMs > 0 ? Math.max(0, Math.min(1, (FLEE_COOLDOWN_MS - remainingMs) / FLEE_COOLDOWN_MS)) : 0;
-    const manaCost = skill?.mana || 0;
-    const endCost = skill?.endurance || 0;
-    const castMs = skill?.cast_time || 0;
-    const castLabel = castMs ? `${(castMs / 1000).toFixed(1)}s cast` : 'Instant';
-    const effectType = skill?.effect_type || skill?.effectType || skill?.effect?.type;
-    const dmgLabel = (() => {
-      if (!effectType) return '';
-      if (effectType === 'damage' || effectType === 'nuke') return `Damage: ${skill?.base_hp ?? 0}`;
-      if (effectType === 'dot') return `DoT: ${skill?.tick_hp ?? skill?.base_hp ?? 0} x${skill?.duration_seconds || 0}`;
-      if (effectType === 'heal') return `Heal: ${skill?.base_hp ?? 0}`;
-      if (effectType === 'hot') return `HoT: ${skill?.tick_hp ?? skill?.base_hp ?? 0} x${skill?.duration_seconds || 0}`;
-      if (effectType === 'manadrain') return `Drain Mana: ${skill?.base_mana ?? 0}`;
-      if (effectType === 'enddrain') return `Drain End: ${skill?.base_endurance ?? 0}`;
-      if (effectType === 'manarestore') return `Restore Mana: ${skill?.base_mana ?? 0}`;
-      if (effectType === 'endrestore') return `Restore End: ${skill?.base_endurance ?? 0}`;
-      if (effectType === 'buff') return 'Buff';
-      if (effectType === 'debuff') return 'Debuff';
+    
+    // Calculate progress for animated border (only for spells)
+    const border_progress = (() => {
+      if (!is_spell || !skill) return 0;
+      if (is_casting) return cast_progress;
+      if (remaining_ms > 0) {
+        const cooldown_duration = skill?.recast_time || remaining_ms;
+        return Math.max(0, Math.min(1, 1 - (remaining_ms / cooldown_duration)));
+      }
+      return 0;
+    })();
+    const border_color = is_spell && skill 
+      ? (is_casting ? 'rgba(120, 200, 255, 0.9)' : 'rgba(200, 150, 100, 0.7)')
+      : 'rgba(200, 150, 100, 0.7)';
+    const shadow_color = is_spell && skill
+      ? (is_casting ? 'rgba(120, 200, 255, 0.5)' : 'rgba(200, 150, 100, 0.3)')
+      : 'rgba(200, 150, 100, 0.3)';
+    const radius = is_spell ? (GEM_CONFIG.defaultWidth + 8) / 2 - 2 : 0;
+    const circumference = is_spell ? 2 * Math.PI * radius : 0;
+    const is_flee = skill?.id === 'builtin-flee';
+    const is_attack = skill?.id === 'builtin-attack';
+    const is_disabled_by_auto_attack = is_attack && is_auto_attack;
+    const player_is_stunned = is_stunned && is_stunned('player');
+    const attack_on_cooldown = is_attack && is_attack_on_cooldown && is_attack_on_cooldown();
+    const flee_cooldown_pct = is_flee && remaining_ms > 0 ? Math.max(0, Math.min(1, (FLEE_COOLDOWN_MS - remaining_ms) / FLEE_COOLDOWN_MS)) : 0;
+    const mana_cost = skill?.mana || 0;
+    const end_cost = skill?.endurance || 0;
+    const cast_ms = skill?.cast_time || 0;
+    const cast_label = cast_ms ? `${(cast_ms / 1000).toFixed(1)}s cast` : 'Instant';
+    const effect_type = skill?.effect_type || skill?.effectType || skill?.effect?.type;
+    const dmg_label = (() => {
+      if (!effect_type) return '';
+      if (effect_type === 'damage' || effect_type === 'nuke') return `Damage: ${skill?.base_hp ?? 0}`;
+      if (effect_type === 'dot') return `DoT: ${skill?.tick_hp ?? skill?.base_hp ?? 0} x${skill?.duration_seconds || 0}`;
+      if (effect_type === 'heal') return `Heal: ${skill?.base_hp ?? 0}`;
+      if (effect_type === 'hot') return `HoT: ${skill?.tick_hp ?? skill?.base_hp ?? 0} x${skill?.duration_seconds || 0}`;
+      if (effect_type === 'manadrain') return `Drain Mana: ${skill?.base_mana ?? 0}`;
+      if (effect_type === 'enddrain') return `Drain End: ${skill?.base_endurance ?? 0}`;
+      if (effect_type === 'manarestore') return `Restore Mana: ${skill?.base_mana ?? 0}`;
+      if (effect_type === 'endrestore') return `Restore End: ${skill?.base_endurance ?? 0}`;
+      if (effect_type === 'buff') return 'Buff';
+      if (effect_type === 'debuff') return 'Debuff';
       return '';
     })();
-    const tooltipParts = [
+    const tooltip_parts = [
       skill?.name,
-      manaCost ? `Mana: ${manaCost}` : null,
-      endCost ? `End: ${endCost}` : null,
-      castLabel,
-      dmgLabel
+      mana_cost ? `Mana: ${mana_cost}` : null,
+      end_cost ? `End: ${end_cost}` : null,
+      cast_label,
+      dmg_label
     ].filter(Boolean);
-    const title = tooltipParts.join(' | ');
-    const isAutoToggle = !isSpell && skill?.id === 'builtin-auto' && isAutoAttack;
-    const bgImage = isSpell
+    const title = tooltip_parts.join(' | ');
+    const is_auto_toggle = !is_spell && skill?.id === 'builtin-auto' && is_auto_attack;
+    const bg_image = is_spell
       ? "/stone-ui/ui/spellempty.png"
-      : isAutoToggle
+      : (is_auto_toggle || attack_on_cooldown || (is_flee && !is_ready))
         ? "/stone-ui/ui/hotkeydown.png"
         : (skill ? "/stone-ui/ui/hotkeyup.png" : "/stone-ui/ui/hotkeyslot.png");
-    const slotClass = isSpell ? 'spell-slot' : 'hotkey-slot';
-    const isCoreAction = ['builtin-attack', 'builtin-ranged', 'builtin-sit', 'builtin-meditate'].includes(skill?.id);
-    const classNames = [slotClass, skill ? 'has-skill' : 'hotkey-empty', isCoreAction ? 'hotkey-slot--core' : '']
+    const slot_class = is_spell ? 'spell-slot' : 'hotkey-slot';
+    const is_core_action = ['builtin-attack', 'builtin-flee', 'builtin-ranged', 'builtin-sit', 'builtin-meditate'].includes(skill?.id);
+    const class_names = [slot_class, skill ? 'has-skill' : 'hotkey-empty', is_core_action ? 'hotkey-slot--core' : '']
       .filter(Boolean)
       .join(' ');
-    const displayName = skill?.id === 'builtin-sit'
-      ? (isSitting ? 'Stand' : 'Sit')
+    const display_name = skill?.id === 'builtin-sit'
+      ? (is_sitting ? 'Stand' : 'Sit')
       : skill?.name;
 
-    const slotHeight = isSpell ? 48 : (isCoreAction ? 24 : 48);
-    const slotPadding = isCoreAction ? 2 : 4;
-    const effectIcon = getEffectIcon(skill);
-    const gemIcon = getGemIcon(skill);
+    const slot_height = is_spell ? 48 : (is_core_action ? 24 : 48);
+    const slot_padding = is_core_action ? 2 : 4;
+    const effect_icon = get_effect_icon(skill);
+    const gem_icon = get_gem_icon(skill);
 
     return (
       <button
-        className={classNames}
+        className={class_names}
         style={{
-          height: slotHeight,
+          height: slot_height,
           width: 48,
-          backgroundImage: `url('${bgImage}')`,
-          backgroundSize: isCoreAction ? '100% 100%' : 'contain',
+          backgroundImage: `url('${bg_image}')`,
+          backgroundSize: is_core_action ? '100% 100%' : 'contain',
           backgroundPosition: 'center',
           backgroundRepeat: 'no-repeat',
           position: 'relative',
-          padding: slotPadding,
-          filter: isCasting ? 'grayscale(0.7) brightness(0.85)' : (isFlee && !isReady ? 'grayscale(0.9) brightness(0.7)' : (isDisabledByAutoAttack ? 'grayscale(0.8) brightness(0.6)' : undefined)),
-          boxShadow: isCasting
+          padding: slot_padding,
+          filter: player_is_stunned ? 'grayscale(1) brightness(0.5)' : (is_casting ? 'grayscale(0.7) brightness(0.85)' : (is_flee && !is_ready ? 'grayscale(0.9) brightness(0.7)' : (is_disabled_by_auto_attack ? 'grayscale(0.8) brightness(0.6)' : undefined))),
+          boxShadow: is_casting
             ? '0 0 10px rgba(255,255,255,0.35) inset, 0 0 6px rgba(120,200,255,0.4)'
-            : (isFlee && !isReady ? '0 0 6px rgba(200,120,60,0.4) inset' : undefined),
+            : (is_flee && !is_ready ? '0 0 6px rgba(200,120,60,0.4) inset' : undefined),
           transition: 'filter 120ms linear, box-shadow 120ms linear'
         }}
-        onClick={() => skill && isReady && !isCasting && !isDisabledByAutoAttack && onUse(skill)}
-        onDoubleClick={() => skill && onClear()}
-        disabled={!skill || !isReady || isCasting || isDisabledByAutoAttack}
-        title={isDisabledByAutoAttack ? 'Auto-attack is active' : (skill ? title : 'Empty')}
+        onClick={() => skill && is_ready && !is_casting && !is_disabled_by_auto_attack && !player_is_stunned && !attack_on_cooldown && on_use(skill)}
+        onDoubleClick={() => skill && on_clear()}
+        disabled={!skill || !is_ready || is_casting || is_disabled_by_auto_attack || player_is_stunned || attack_on_cooldown}
+        title={player_is_stunned ? 'You are stunned!' : (is_disabled_by_auto_attack ? 'Auto-attack is active' : (attack_on_cooldown ? 'Attack on cooldown' : (skill ? title : 'Empty')))}
       >
-        {!isSpell && skill && typeof effectIcon === 'number' ? (
+        {!is_spell && skill && typeof effect_icon === 'number' ? (
           <div style={{ position: 'absolute', top: 4, left: '50%', transform: 'translateX(-50%)', pointerEvents: 'none' }}>
-            <EqIcon index={effectIcon} size={30} cols={6} sheet="/stone-ui/spellicons/spells1.png" />
+            <Icon index={effect_icon} size={30} cols={6} sheet="/stone-ui/spellicons/spells1.png" />
           </div>
         ) : null}
-        {isSpell && skill && typeof gemIcon === 'number' ? (
+        {is_spell && skill && typeof gem_icon === 'number' ? (
           <div
             className="gem-icon-wrap"
             style={{
               position: 'absolute',
-              top: 9,
-              left: '9%',
+              top: 4,
+              left: '15%',
               pointerEvents: 'none',
               overflow: 'hidden',
               width: GEM_CONFIG.defaultWidth,
               height: GEM_CONFIG.defaultHeight
             }}
           >
-            <GemIcon
-              index={gemIcon}
+            <Icon
+              index={gem_icon}
+              isGem={true}
             />
           </div>
         ) : null}
-        {!isSpell && skill && (
-          <div className="hotkey-slot__label">{isCasting ? 'Casting...' : displayName}</div>
+        {!is_spell && skill && (
+          <div className="hotkey-slot__label">{is_casting ? 'Casting...' : display_name}</div>
         )}
-        {skill && !isReady && <div className="hotkey-slot__cd">{remaining}s</div>}
-        {isFlee && !isReady && (
+        {skill && !is_ready && <div className="hotkey-slot__cd">{remaining}s</div>}
+        {is_flee && !is_ready && (
           <div
             style={{
               position: 'absolute',
@@ -359,14 +391,14 @@ export default function CombatConsole({
             <div
               style={{
                 height: '100%',
-                width: `${fleeCooldownPct * 100}%`,
+                width: `${flee_cooldown_pct * 100}%`,
                 background: 'linear-gradient(90deg, rgba(255,200,120,0.4), rgba(255,200,120,0.85))',
                 transition: 'width 100ms linear'
               }}
             />
           </div>
         )}
-        {skill && isCasting && (
+        {skill && is_casting && (
           <div
             style={{
               position: 'absolute',
@@ -377,7 +409,7 @@ export default function CombatConsole({
             }}
           />
         )}
-        {skill && isCasting && (
+        {skill && is_casting && (
           <div
             style={{
               position: 'absolute',
@@ -394,7 +426,7 @@ export default function CombatConsole({
             <div
               style={{
                 height: '100%',
-                width: `${castProgress * 100}%`,
+                width: `${cast_progress * 100}%`,
                 background: 'linear-gradient(90deg, rgba(120,200,255,0.3), rgba(120,200,255,0.85))',
                 transition: 'width 80ms linear'
               }}
@@ -409,7 +441,7 @@ export default function CombatConsole({
     <div className="console">
       <div className="console-top">
         <div className="console-mob">
-          {currentMob ? (
+          {current_mob ? (
             <div style={{ display: 'grid', gap: '10px' }}>
               <div
                 style={{
@@ -419,7 +451,7 @@ export default function CombatConsole({
                   display: 'grid',
                   gap: '6px',
                   boxShadow: con ? `0 0 8px ${con.color}` : 'none',
-                  animation: inCombat && con ? 'con-blink 1s ease-in-out infinite' : 'none',
+                  animation: in_combat && con ? 'con-blink 1s ease-in-out infinite' : 'none',
                   '--con-color': con?.color || 'rgba(255,255,255,0.6)'
                 }}
               >
@@ -439,24 +471,24 @@ export default function CombatConsole({
                     position: 'relative'
                   }}
                 >
-                  {mobPortraitSrc && !portraitFailed ? (
+                  {mob_portrait_src && !portrait_failed ? (
                     <img
-                      src={mobPortraitSrc}
-                      alt={currentMob.name}
+                      src={mob_portrait_src}
+                      alt={current_mob.name}
                       style={{ width: '100%', height: '100%', objectFit: 'contain', borderRadius: '4px', transform: 'scale(0.85)' }}
                       onError={(e) => {
-                        if (portraitFailed) return;
-                        setPortraitFailed(true);
-                        e.target.src = fallbackPortrait;
+                        if (portrait_failed) return;
+                        set_portrait_failed(true);
+                        e.target.src = fallback_portrait;
                       }}
-                  />
+                    />
                 ) : (
                   <div style={{ opacity: 0.8 }}>
                     Mob art unavailable
-                    {mobPortraitSrc ? ` (${mobPortraitSrc.split('/').pop()})` : ''}
+                    {mob_portrait_src ? ` (${mob_portrait_src.split('/').pop()})` : ''}
                   </div>
                 )}
-                  {mobEffects.length > 0 && (
+                  {mob_effects.length > 0 && (
                     <div
                       style={{
                         position: 'absolute',
@@ -474,15 +506,16 @@ export default function CombatConsole({
                         backdropFilter: 'blur(2px)'
                       }}
                     >
-                      {mobEffects.map((fx) => {
-                        const timeLeft = fx.expiresAt ? Math.max(0, Math.ceil((fx.expiresAt - Date.now()) / 1000)) : 0;
+                      {mob_effects.map((fx) => {
+                        const expires_at_ms = fx.expires_at_ms || (fx.expiresAt ? new Date(fx.expiresAt).getTime() : null);
+                        const timeLeft = expires_at_ms ? Math.max(0, Math.ceil((expires_at_ms - Date.now()) / 1000)) : 0;
                         return (
                           <div
                             key={fx.id || fx.name}
                             style={{ position: 'relative', width: 24, height: 24, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}
                             title={fx.name || ''}
                           >
-                            <EqIcon
+                            <Icon
                               index={fx.iconIndex || fx.icon || 0}
                               size={20}
                               cols={6}
@@ -516,36 +549,36 @@ export default function CombatConsole({
                 <div className="console-bar">
                   <div className="console-bar__label">
                     <span>
-                      {inCombat && <span style={{ marginRight: 6 }}>⚔️</span>}
-                      {currentMob.name}
-                      {currentMob.isNamed && <span className="mob-tag" style={{ marginLeft: 6 }}>NAMED</span>}
+                      {in_combat && <span style={{ marginRight: 6 }}>⚔️</span>}
+                      {current_mob.name}
+                      {current_mob.isNamed && <span className="mob-tag" style={{ marginLeft: 6 }}>NAMED</span>}
                     </span>
-                    <span>{mobHp} / {currentMob.hp}</span>
+                    <span>{mob_hp} / {current_mob.hp}</span>
                   </div>
                   <div className="console-bar__track">
                     <div
                       className="console-bar__fill"
-                      style={{ width: `${Math.max(0, Math.min(100, (mobHp / currentMob.hp) * 100))}%` }}
+                      style={{ width: `${Math.max(0, Math.min(100, (mob_hp / current_mob.hp) * 100))}%` }}
                     />
-                    {renderSegmentOverlay(currentMob.hp, { color: 'rgba(0,0,0,0.9)', opacity: 0.85, lineWidth: 2 })}
+                    {render_segment_overlay(current_mob.hp, { color: 'rgba(0,0,0,0.9)', opacity: 0.85, lineWidth: 2 })}
                   </div>
                 </div>
 
-                {currentMob && (currentMob.mana || currentMob.endurance) ? (() => {
-                  const hasMana = currentMob.mana && currentMob.mana > 0;
-                  const maxVal = hasMana ? currentMob.mana : currentMob.endurance || 0;
-                  const label = hasMana ? 'Mana' : 'Endurance';
-                  const currentVal = maxVal; // placeholder until mob resource spend is implemented
-                  const pct = maxVal > 0 ? Math.max(0, Math.min(100, (currentVal / maxVal) * 100)) : 0;
-                  const barColor = hasMana ? '#3b82f6' : '#ffb637ff';
+                {current_mob && (current_mob.mana || current_mob.endurance) ? (() => {
+                  const has_mana = current_mob.mana && current_mob.mana > 0;
+                  const max_val = has_mana ? current_mob.mana : current_mob.endurance || 0;
+                  const label = has_mana ? 'Mana' : 'Endurance';
+                  const current_val = max_val; // placeholder until mob resource spend is implemented
+                  const pct = max_val > 0 ? Math.max(0, Math.min(100, (current_val / max_val) * 100)) : 0;
+                  const bar_color = has_mana ? '#3b82f6' : '#ffb637ff';
                   return (
                     <div className="console-bar">
                       <div className="console-bar__track">
                         <div
                           className="console-bar__fill"
-                          style={{ width: `${pct}%`, background: `linear-gradient(90deg, ${barColor}, ${barColor})` }}
+                          style={{ width: `${pct}%`, background: `linear-gradient(90deg, ${bar_color}, ${bar_color})` }}
                         />
-                        {renderSegmentOverlay(maxVal, { color: 'rgba(0,0,0,0.9)', opacity: 0.85, lineWidth: 2 })}
+                        {render_segment_overlay(max_val, { color: 'rgba(0,0,0,0.9)', opacity: 0.85, lineWidth: 2 })}
                       </div>
                     </div>
                   );
@@ -562,37 +595,60 @@ export default function CombatConsole({
               >
                 <div className="console-bar">
                   <div className="console-bar__label">
-                    <span>{displayPlayerName}</span>
-                    <span>{hp} / {maxHp}</span>
+                    <span>{display_player_name}</span>
+                    <span>{hp} / {max_hp}</span>
                   </div>
                   <div className="console-bar__track">
                     <div
                       className="console-bar__fill"
-                      style={{ width: `${Math.max(0, Math.min(100, (hp / maxHp) * 100))}%` }}
+                      style={{ width: `${Math.max(0, Math.min(100, (hp / max_hp) * 100))}%` }}
                     />
-                    {renderSegmentOverlay(maxHp, { color: 'rgba(0,0,0,0.9)', opacity: 0.85, lineWidth: 2 })}
+                    {render_segment_overlay(max_hp, { color: 'rgba(0,0,0,0.9)', opacity: 0.85, lineWidth: 2 })}
                   </div>
                 </div>
-                <div className="console-bar">
-                  <div className="console-bar__label">
-                    <span></span>
-                    <span>{playerClass.isCaster ? `${mana} / ${maxMana}` : `${endurance} / ${maxEndurance}`}</span>
+                {resource_type === 'melee' ? (
+                  <div className="console-bar">
+                    <div className="console-bar__label">
+                      <span></span>
+                      <span>{endurance} / {max_endurance}</span>
+                    </div>
+                    <div className="console-bar__track">
+                      <div
+                        className="console-bar__fill"
+                        style={{
+                          width: `${Math.max(0, Math.min(100, (endurance / max_endurance) * 100))}%`,
+                          background: 'linear-gradient(90deg, #ffb637ff, #f59e0b)'
+                        }}
+                      />
+                      {render_segment_overlay(max_endurance, {
+                        color: 'rgba(0,0,0,0.9)',
+                        opacity: 0.85,
+                        lineWidth: 2
+                      })}
+                    </div>
                   </div>
-                  <div className="console-bar__track">
-                    <div
-                      className="console-bar__fill"
-                      style={{
-                        width: `${Math.max(0, Math.min(100, (playerClass.isCaster ? (mana / maxMana) : (endurance / maxEndurance)) * 100))}%`,
-                        background: playerClass.isCaster ? 'linear-gradient(90deg, #3b82f6, #3b82f6)' : 'linear-gradient(90deg, #ffb637ff, #f59e0b)'
-                      }}
-                    />
-                    {renderSegmentOverlay(playerClass.isCaster ? maxMana : maxEndurance, {
-                      color: 'rgba(0,0,0,0.9)',
-                      opacity: 0.85,
-                      lineWidth: 2
-                    })}
+                ) : (
+                  <div className="console-bar">
+                    <div className="console-bar__label">
+                      <span></span>
+                      <span>{mana} / {max_mana}</span>
+                    </div>
+                    <div className="console-bar__track">
+                      <div
+                        className="console-bar__fill"
+                        style={{
+                          width: `${Math.max(0, Math.min(100, (mana / max_mana) * 100))}%`,
+                          background: 'linear-gradient(90deg, #3b82f6, #3b82f6)'
+                        }}
+                      />
+                      {render_segment_overlay(max_mana, {
+                        color: 'rgba(0,0,0,0.9)',
+                        opacity: 0.85,
+                        lineWidth: 2
+                      })}
+                    </div>
                   </div>
-                </div>
+                )}
               </div>
             </div>
           ) : (
@@ -617,9 +673,9 @@ export default function CombatConsole({
                 gap: '1px',
                 justifyContent: 'center'
               }}>
-                {primarySpellSlots.map((skill, idx) => (
+                {primary_spell_slots.map((skill, idx) => (
                   <div key={`spell-${idx}`} style={{ width: 46 }}>
-                    {renderUseButton(skill, onUseSkill, () => onClearSpell(idx + 1), true)}
+                    {render_use_button(skill, on_use_skill, () => on_clear_spell(idx + 1), true)}
                   </div>
                 ))}
               </div>
@@ -628,23 +684,32 @@ export default function CombatConsole({
             {/* Middle column: hotkeys + active effects */}
             <div style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: '10px' }}>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', alignItems: 'center' }}>
-                <div style={{ width: 48 }}>{renderUseButton({ id: 'builtin-attack', name: 'Attack' }, onUseSkill, () => {}, false)}</div>
-                <div style={{ width: 48 }}>{renderUseButton({ id: 'builtin-ranged', name: 'Ranged' }, onUseSkill, () => {}, false)}</div>
-                <div style={{ width: 48 }}>{renderUseButton({ id: 'builtin-sit', name: 'Sit/Stand' }, onUseSkill, () => {}, false)}</div>
-                <div style={{ width: 48 }}>{renderUseButton({ id: 'builtin-meditate', name: 'Meditate' }, () => { onUseSkill({ id: 'builtin-meditate', name: 'Meditate' }); setShowConfig(true); }, () => {}, false)}</div>
+                <div style={{ width: 48 }}>{render_use_button({ id: 'builtin-attack', name: 'Attack' }, on_use_skill, () => {}, false)}</div>
+                <div style={{ width: 48 }}>{render_use_button({ id: 'builtin-flee', name: 'Flee' }, on_use_skill, () => {}, false)}</div>
+                <div style={{ width: 48 }}>{render_use_button({ id: 'builtin-ranged', name: 'Ranged' }, on_use_skill, () => {}, false)}</div>
+                <div style={{ width: 48 }}>{render_use_button({ id: 'builtin-sit', name: 'Sit/Stand' }, on_use_skill, () => {}, false)}</div>
+                <div style={{ width: 48 }}>{render_use_button({ id: 'builtin-meditate', name: 'Meditate' }, () => { 
+                  if (!in_combat) {
+                    on_use_skill({ id: 'builtin-meditate', name: 'Meditate' }); 
+                    set_show_config(true);
+                  } else {
+                    on_use_skill({ id: 'builtin-meditate', name: 'Meditate' });
+                  }
+                }, () => {}, false)}</div>
               </div>
               <div style={{ fontSize: 12, fontWeight: 700, color: '#d6c18a', textAlign: 'center' }}>Effects</div>
               <div className="stone-effects" style={{ padding: '6px', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 6, minHeight: 60 }}>
                 <div className="stone-effects__icons" style={{ display: 'grid', gap: '6px', gridTemplateColumns: 'repeat(auto-fill, minmax(28px, 1fr))' }}>
                   {effects.map((fx) => {
-                    const timeLeft = fx.expiresAt ? Math.max(0, Math.ceil((fx.expiresAt - Date.now()) / 1000)) : 0;
+                    const expires_at_ms = fx.expires_at_ms || (fx.expiresAt ? new Date(fx.expiresAt).getTime() : null);
+                    const timeLeft = expires_at_ms ? Math.max(0, Math.ceil((expires_at_ms - Date.now()) / 1000)) : 0;
                     return (
                       <div
                         key={fx.id || fx.name}
                         style={{ position: 'relative', width: 26, height: 26, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', background: 'none', border: 'none', padding: 0 }}
                         title={fx.name || ''}
                       >
-                        <EqIcon
+                        <Icon
                           index={fx.iconIndex || fx.icon || 0}
                           size={22}
                           cols={6}
@@ -684,11 +749,11 @@ export default function CombatConsole({
                 gap: '1px',
                 justifyContent: 'center'
               }}>
-                {allAbilitySlots.map((skill, idx) => {
-                  const slotIndex = idx + 1;
+                {all_ability_slots.map((skill, idx) => {
+                  const slot_index = idx + 1;
                   return (
                     <div key={`ability-${idx}`} style={{ width: 46 }}>
-                    {renderUseButton(skill, onUseSkill, () => onClearAbility(slotIndex))}
+                    {render_use_button(skill, on_use_skill, () => on_clear_ability(slot_index))}
                   </div>
                   );
                 })}
@@ -700,8 +765,8 @@ export default function CombatConsole({
 
       <div className="console-log">
         <div className="console-title">Combat Log</div>
-        <div className="console-log__window" ref={logRef}>
-          {combatLog.map((log) => (
+        <div className="console-log__window" ref={log_ref}>
+          {combat_log.map((log) => (
             <div
               key={log.id}
               className={`log-line log-${log.type || 'normal'}`}
@@ -712,7 +777,7 @@ export default function CombatConsole({
         </div>
       </div>
 
-      {showConfig && (
+      {show_config && (
         <div
           style={{
             position: 'fixed',
@@ -723,7 +788,7 @@ export default function CombatConsole({
             justifyContent: 'center',
             zIndex: 50
           }}
-          onClick={() => setShowConfig(false)}
+          onClick={() => set_show_config(false)}
         >
           <div
             className="console"
@@ -732,18 +797,18 @@ export default function CombatConsole({
           >
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
               <div>
-                {totalSpellSlots.map((skill, idx) =>
-                  renderConfigRow(idx + 1, skill, spellOptions, handleSpellChange, onClearSpell, true)
+                {total_spell_slots.map((skill, idx) =>
+                  render_config_row(idx + 1, skill, spell_options, handle_spell_change, on_clear_spell, true)
                 )}
               </div>
               <div>
-                {totalAbilitySlots.map((skill, idx) =>
-                  renderConfigRow(idx + 1, skill, abilityOptions, handleAbilityChange, onClearAbility, false)
+                {total_ability_slots.map((skill, idx) =>
+                  render_config_row(idx + 1, skill, ability_options, handle_ability_change, on_clear_ability, false)
                 )}
               </div>
             </div>
             <div style={{ display: 'flex', justifyContent: 'center', marginTop: '12px', marginBottom: '4px' }}>
-              <button className="btn warn" onClick={() => setShowConfig(false)} style={{ padding: '4px 12px', fontSize: '11px' }}>Close</button>
+              <button className="btn warn" onClick={() => set_show_config(false)} style={{ padding: '4px 12px', fontSize: '11px' }}>Close</button>
             </div>
           </div>
         </div>

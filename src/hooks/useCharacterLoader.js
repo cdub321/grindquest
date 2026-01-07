@@ -1,288 +1,272 @@
-import { useEffect, useRef } from 'react';
-import { loadCharacter } from '../services/playerStorage';
-import { slotOrder, CARRY_START } from '../services/inventoryManager';
+import { useState, useEffect } from 'react'
+import { fetch_character, fetch_inventory, fetch_bank, fetch_character_spells } from '../services/playerStorage'
+import { fetch_spell, fetch_zone, fetch_camp, fetch_item } from '../services/referenceData'
+import { deserialize_inventory_from_db } from '../services/inventoryManager'
 
-export function useCharacterLoader({
-  characterId,
-  user,
-  items,
-  skills,
-  classes,
-  scheduleSave,
-  setCharacterName,
-  setPlayerClassKey,
-  setMode,
-  setKilledAt,
-  setRaceId,
-  setDeityId,
-  setLevel,
-  setXp,
-  setCurrentCampId,
-  setCurrentMob,
-  setMobHp,
-  setMobMana,
-  setMobEndurance,
-  setInCombat,
-  setIsSitting,
-  setIsAutoAttack,
-  setFleeExhausted,
-  setSkillCooldowns,
-  setPlayerEffects,
-  setMobEffects,
-  setCurrentZoneId,
-  setBindZoneId,
-  setCopper,
-  setSilver,
-  setGold,
-  setPlatinum,
-  setKnownSkills,
-  setBaseStats,
-  setBaseVitals,
-  setSlots,
-  slotsRef,
-  justLoadedRef,
-  setMaxHp,
-  setHp,
-  setMaxMana,
-  setMana,
-  setMaxEndurance,
-  setEndurance,
-  setIsSelectingCharacter,
-  setIsCreatingCharacter,
-  setLoadError,
-  setIsProfileLoading,
-  addLog,
-  setProfileHydrated,
-  profileHydratedRef
-}) {
-  const lastUserIdRef = useRef(null);
-  const lastCharacterIdRef = useRef(null);
+/**
+ * Hook to load a character and all associated data from the database
+ * @param {string} character_id - Character UUID
+ * @returns {object} { loading, error, character_data }
+ */
+export function use_character_loader(character_id) {
+  const [loading, set_loading] = useState(true)
+  const [error, set_error] = useState(null)
+  const [character_data, set_character_data] = useState(null)
 
   useEffect(() => {
-    if (!characterId || !user) return;
-    if (!items || !Object.keys(items || {}).length) return;
-    if (!skills || skills.length === 0) return;
-
-    // Avoid reloading the same profile repeatedly (e.g., tab blur auth jitters)
-    if (user.id === lastUserIdRef.current && characterId === lastCharacterIdRef.current) {
-      return;
+    if (!character_id) {
+      set_loading(false)
+      set_character_data(null)
+      return
     }
 
-    const loadProfile = async () => {
-      setIsProfileLoading(true);
+    let is_cancelled = false
+
+    const load_character = async () => {
       try {
-        const { character, inventory: inv, spells: learnedRows } = await loadCharacter(characterId);
-        const classKey = character.class_id || character.class || '';
-        const loadedClass = classes[classKey] || {};
+        set_loading(true)
+        set_error(null)
 
-        setCharacterName(character.name || '');
-        setPlayerClassKey(classKey);
-        setMode(character.mode || 'normal');
-        setKilledAt(character.killed_at || null);
-        setRaceId(character.race_id || null);
-        setDeityId(character.deity_id || null);
-        setLevel(character.level);
-        setXp(character.xp);
-        const lastZone = character.zone_id || null;
-        const bindZone = character.bind_zone_id || lastZone;
-        setBindZoneId(bindZone);
-        // Always move to bind on load and persist zone immediately
-        if (bindZone) {
-          setCurrentZoneId(bindZone);
-          scheduleSave?.(
-            {
-              character: { zone_id: bindZone }
-            },
-            { immediate: true }
-          );
-        } else {
-          setCurrentZoneId(lastZone);
-        }
-        setCurrentCampId(null);
-        setCurrentMob(null);
-        setMobHp(0);
-        setMobMana(0);
-        setMobEndurance(0);
-        setInCombat(false);
-        setIsSitting(false);
-        setIsAutoAttack(false);
-        setFleeExhausted(false);
-        setSkillCooldowns({});
-        // Restore active effects from saved data
-        const nowMs = Date.now();
-        const rawEffects = character.active_effects || [];
-        const reviveEffect = (e) => {
-          const endMs = e.endsAt ? new Date(e.endsAt).getTime() : 0;
-          const remainingMs = endMs ? endMs - nowMs : 0;
-          const durationSec = Math.max(0, Math.ceil(remainingMs / 1000));
-          if (!durationSec) return null;
-          return {
-            id: e.id || `loaded-${Math.random().toString(16).slice(2)}`,
-            name: e.name || 'Effect',
-            type: e.type || null,
-            statMods: e.statMods || null,
-            icon: e.icon || null,
-            tickDamage: e.tickDamage || 0,
-            tickHeal: e.tickHeal || 0,
-            tickMana: e.tickMana || 0,
-            tickEndurance: e.tickEndurance || 0,
-            tapHp: e.tapHp || 0,
-            tapMana: e.tapMana || 0,
-            tapEndurance: e.tapEndurance || 0,
-            damageShield: e.damageShield || 0,
-            rune: e.rune || 0,
-            runeRemaining: e.runeRemaining ?? e.rune ?? 0,
-            tickInterval: (e.tickInterval || 3) * 1000,
-            lastTick: nowMs,
-            expiresAt: nowMs + durationSec * 1000,
-            duration: durationSec,
-            casterCha: e.casterCha || 0,
-            onExpire: e.onExpire || null
-          };
-        };
-        const playerRestored = [];
-        const mobRestored = [];
-        rawEffects.forEach((e) => {
-          const revived = reviveEffect(e);
-          if (!revived) return;
-          if (e.target === 'mob') {
-            mobRestored.push(revived);
-          } else {
-            playerRestored.push(revived);
-          }
-        });
-        setPlayerEffects(playerRestored);
-        setMobEffects(mobRestored);
-        const cooldowns = character.cooldowns || {};
-        setSkillCooldowns(
-          Object.fromEntries(
-            Object.entries(cooldowns || {}).map(([k, v]) => [k, new Date(v).getTime() || 0])
-          )
-        );
-        setFleeExhausted(false);
-        setCopper(character.currency?.copper || 0);
-        setSilver(character.currency?.silver || 0);
-        setGold(character.currency?.gold || 0);
-        setPlatinum(character.currency?.platinum || 0);
+        // Load character data
+        const character = await fetch_character(character_id)
+        if (is_cancelled) return
 
-        const learned = (learnedRows || []).reduce((arr, row) => {
-          const data = skills.find((s) => s.id === row.skill_id);
-          if (!data) return arr;
-          const gemIconIndex = data.gemicon ?? data.gemIcon ?? data.gem_icon ?? null;
-          const spellIconIndex = data.spellicon ?? data.spellIcon ?? data.spell_icon ?? data.icon ?? data.iconIndex ?? null;
-          arr.push({
-            ...data,
-            iconIndex: spellIconIndex, // backward compat for any legacy callers
-            gemIconIndex,
-            spellIconIndex,
-            ability_slot: row.ability_slot || 0,
-            spell_slot: row.spell_slot || 0,
-            rank: row.rank || data.rank || 1,
-            learned_at: row.learned_at
-          });
-          return arr;
-        }, []);
-        setKnownSkills(learned);
+        // Load inventory
+        const inventory_rows = await fetch_inventory(character_id)
+        if (is_cancelled) return
 
-        setBaseStats({
-          str: character.str_base || 0,
-          sta: character.sta_base || 0,
-          agi: character.agi_base || 0,
-          dex: character.dex_base || 0,
-          int: character.int_base || 0,
-          wis: character.wis_base || 0,
-          cha: character.cha_base || 0
-        });
-
-        const normalizedInv = (inv || []).map((row) => {
-          const baseKey = row.base_item_id || row.baseItemId;
-          const base = items[baseKey] || {};
-          const bagSlots = base.bagslots || base.bagSlots || row.item_data?.bagslots || row.item_data?.bagSlots || 0;
-          return {
-            id: row.id || `${baseKey}-${Math.random().toString(16).slice(2)}`,
-            baseItemId: base.id || baseKey,
-            name: base.name || row.name || baseKey,
-            slot: base.slot || row.slot || 'misc',
-            bonuses: base.bonuses || {},
-            iconIndex: base.iconIndex ?? null,
-            quantity: row.quantity || 1,
-            stackable: base.stackable ?? false,
-            maxStack: base.maxStack || 1,
-            slot_id: row.slot_id || null,
-            container_id: row.container_id || null,
-            bagSlots,
-            contents: bagSlots ? Array(bagSlots).fill(null) : null
-          };
-        });
-
-        const nextSlots = Array(slotOrder.length).fill(null);
-        const bagLookup = {};
-
-        // place top-level items
-        normalizedInv
-          .filter((i) => !i.container_id)
-          .forEach((item) => {
-            const idx = item.slot_id ? slotOrder.indexOf(item.slot_id) : -1;
-            const targetIdx = idx !== -1 ? idx : nextSlots.findIndex((s, i) => i >= CARRY_START && !s);
-            if (targetIdx !== -1) {
-              nextSlots[targetIdx] = item;
-              bagLookup[item.id] = item;
+        // Deserialize inventory to slots array
+        const slots = deserialize_inventory_from_db(inventory_rows)
+        
+        // Enrich items with base item data (name, icon_index, etc.)
+        const enriched_slots = await Promise.all(
+          slots.map(async (slot) => {
+            if (!slot || !slot.base_item_id) return slot
+            
+            try {
+              const base_item = await fetch_item(slot.base_item_id)
+              return {
+                ...slot,
+                name: base_item.name,
+                icon_index: base_item.icon_index,
+                stackable: base_item.stackable,
+                max_stack: base_item.max_stack,
+                slots: base_item.slots,
+                bag_slots: base_item.bag_slots,
+                bonuses: base_item.bonuses,
+                contents: base_item.bag_slots > 0 
+                  ? (slot.contents && Array.isArray(slot.contents) && slot.contents.length > 0
+                      ? await Promise.all(
+                          slot.contents.map(async (bag_item) => {
+                            if (!bag_item || !bag_item.base_item_id) return bag_item
+                            try {
+                              const bag_base_item = await fetch_item(bag_item.base_item_id)
+                              return {
+                                ...bag_item,
+                                name: bag_base_item.name,
+                                icon_index: bag_base_item.icon_index,
+                                stackable: bag_base_item.stackable,
+                                max_stack: bag_base_item.max_stack,
+                                slots: bag_base_item.slots,
+                                bonuses: bag_base_item.bonuses
+                              }
+                            } catch (err) {
+                              console.error(`Failed to fetch bag item ${bag_item.base_item_id}:`, err)
+                              return bag_item
+                            }
+                          })
+                        )
+                      : Array(base_item.bag_slots).fill(null))
+                  : null
+              }
+            } catch (err) {
+              console.error(`Failed to fetch item ${slot.base_item_id}:`, err)
+              return slot
             }
-          });
+          })
+        )
+        
+        // Load bank
+        const bank_rows = await fetch_bank(character_id)
+        if (is_cancelled) return
 
-        // place bag children
-        normalizedInv
-          .filter((i) => i.container_id)
-          .forEach((child) => {
-            const parent = bagLookup[child.container_id];
-            if (!parent || !parent.contents) return;
-            const slotNum = child.slot_id ? parseInt(String(child.slot_id).replace(/\D/g, ''), 10) : NaN;
-            const pos =
-              Number.isFinite(slotNum) && slotNum > 0 && slotNum <= parent.contents.length
-                ? slotNum - 1
-                : parent.contents.findIndex((c) => !c);
-            if (pos === -1) return;
-            parent.contents[pos] = child;
-          });
+        // Load character spells
+        const spell_rows = await fetch_character_spells(character_id)
+        if (is_cancelled) return
 
-        setSlots(nextSlots);
-        slotsRef.current = nextSlots;
-        justLoadedRef.current = true;
-        const baseHpVal = Number(character.base_hp ?? 0) || 0;
-        const baseManaVal = Number(character.base_mana ?? 0) || 0;
-        const baseEndVal = Number(character.base_endurance ?? 0) || 0;
-        setBaseVitals?.({
-          hp: baseHpVal,
-          mana: baseManaVal,
-          endurance: baseEndVal
-        });
-        setMaxHp(baseHpVal);
-        setHp((character.hp ?? baseHpVal) || 0);
-        setMaxMana(baseManaVal);
-        setMana((character.mana ?? baseManaVal) || 0);
-        setMaxEndurance(baseEndVal);
-        setEndurance((character.endurance ?? baseEndVal) || 0);
-        // We reset encounter state on load, so skip restoring mob/effects here.
-        setIsSelectingCharacter(false);
-        setIsCreatingCharacter(false);
-        setLoadError('');
-        lastUserIdRef.current = user.id;
-        lastCharacterIdRef.current = characterId;
-        setProfileHydrated?.(true);
-        if (profileHydratedRef) {
-          profileHydratedRef.current = true;
+        // Load full spell data for each learned spell
+        const known_spells = await Promise.all(
+          spell_rows.map(async (row) => {
+            try {
+              const spell_data = await fetch_spell(row.spell_id)
+              // Normalize spell data - ensure consistent field names
+              return {
+                spell_id: row.spell_id,
+                ability_slot: row.ability_slot,
+                spell_slot: row.spell_slot,
+                rank: row.rank,
+                learned_at: row.learned_at,
+                ...spell_data,
+                // Normalize icon field - use new_icon from DB as icon_index
+                icon_index: spell_data.new_icon || null,
+                // Add skill_type if not present (defaults to 'spell' in DB)
+                skill_type: spell_data.skill_type || 'spell'
+              }
+            } catch (err) {
+              console.error(`Failed to fetch spell ${row.spell_id}:`, err)
+              return null
+            }
+          })
+        )
+        const valid_spells = known_spells.filter(Boolean)
+
+        // Parse active effects from JSONB
+        const active_effects = character.active_effects || []
+        const now_ms = Date.now()
+        const restored_effects = active_effects
+          .filter((effect) => {
+            // Filter out expired effects
+            if (!effect.expires_at) return false
+            const expires_ms = new Date(effect.expires_at).getTime()
+            return expires_ms > now_ms
+          })
+          .map((effect) => {
+            // Convert ISO timestamp to milliseconds for runtime
+            const expires_ms = new Date(effect.expires_at).getTime()
+            const remaining_ms = expires_ms - now_ms
+            return {
+              ...effect,
+              expires_at_ms: expires_ms,
+              remaining_ms: remaining_ms
+            }
+          })
+
+        // Parse cooldowns from JSONB
+        const cooldowns = character.cooldowns || {}
+        const cooldowns_ms = Object.fromEntries(
+          Object.entries(cooldowns).map(([spell_id, iso_timestamp]) => {
+            if (!iso_timestamp) return [spell_id, null]
+            return [spell_id, new Date(iso_timestamp).getTime()]
+          })
+        )
+
+        // Parse currency from JSONB
+        const currency = character.currency || { platinum: 0, gold: 0, silver: 0 }
+
+        // Current mob - cleared on load (combat state reset)
+        const current_mob = null
+
+        // Load zone and camp data
+        let current_zone = null
+        let current_camp = null
+        if (character.zone_id) {
+          try {
+            current_zone = await fetch_zone(character.zone_id)
+          } catch (err) {
+            console.error(`Failed to fetch zone ${character.zone_id}:`, err)
+          }
+        }
+        if (character.current_camp_id) {
+          try {
+            current_camp = await fetch_camp(character.current_camp_id)
+          } catch (err) {
+            console.error(`Failed to fetch camp ${character.current_camp_id}:`, err)
+          }
+        }
+
+        // Normalize character data
+        const normalized = {
+          // Character basic info
+          id: character.id,
+          user_id: character.user_id,
+          name: character.name,
+          class_id: character.class_id,
+          race_id: character.race_id,
+          deity_id: character.deity_id,
+          level: character.level,
+          xp: character.xp,
+          xp_mod: character.xp_mod || 100,
+          zone_id: character.zone_id,
+          bind_zone_id: character.bind_zone_id,
+          bind_camp_id: character.bind_camp_id,
+          current_camp_id: character.current_camp_id,
+          mode: character.mode,
+          killed_at: character.killed_at,
+
+          // Base stats
+          str_base: character.str_base || 0,
+          sta_base: character.sta_base || 0,
+          agi_base: character.agi_base || 0,
+          dex_base: character.dex_base || 0,
+          int_base: character.int_base || 0,
+          wis_base: character.wis_base || 0,
+          cha_base: character.cha_base || 0,
+
+          // Base vitals
+          base_hp: character.base_hp || 0,
+          base_mana: character.base_mana || 0,
+          base_endurance: character.base_endurance || 0,
+
+          // Base regen rates
+          base_hp_regen: character.base_hp_regen || 0,
+          base_mana_regen: character.base_mana_regen || 0,
+          base_end_regen: character.base_end_regen || 0,
+
+          // Resource type
+          resource_type: character.resource_type || 'melee',
+
+          // Current vitals
+          current_hp: character.current_hp || character.base_hp || 0,
+          current_mana: character.current_mana || character.base_mana || 0,
+          current_endurance: character.current_endurance || character.base_endurance || 0,
+
+          // Inventory
+          slots: enriched_slots,
+          bank_rows: bank_rows,
+
+          // Spells
+          known_spells: valid_spells,
+
+          // Effects and cooldowns
+          active_effects: restored_effects,
+          cooldowns: cooldowns_ms,
+
+          // Currency
+          currency: currency,
+
+          // Combat state (cleared on load)
+          current_mob: current_mob,
+          in_combat: false,
+
+          // Zone and camp data
+          current_zone: current_zone,
+          current_camp: current_camp,
+          
+          // Mechanics slots
+          auto_cast_slot: character.auto_cast_slot || null,
+          auto_attack_slot: character.auto_attack_slot || null
+        }
+
+        if (!is_cancelled) {
+          set_character_data(normalized)
+          set_loading(false)
         }
       } catch (err) {
-        console.error(err);
-        addLog('Failed to load profile.', 'error');
-        setLoadError('Failed to load profile. Please re-select a character.');
-        setIsSelectingCharacter(true);
-      } finally {
-        setIsProfileLoading(false);
+        console.error('Error loading character:', err)
+        if (!is_cancelled) {
+          set_error(err)
+          set_loading(false)
+        }
       }
-    };
+    }
 
-    loadProfile();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [characterId, user, items, skills, classes]);
+    load_character()
+
+    return () => {
+      is_cancelled = true
+    }
+  }, [character_id])
+
+  return { loading, error, character_data }
 }
+

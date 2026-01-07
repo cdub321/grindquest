@@ -1,4 +1,6 @@
-import EqIcon from './EqIcon';
+import Icon from './Icon';
+import { build_item_tooltip } from '../utils/itemUtils';
+import { get_slot_labels } from '../utils/slotUtils';
 
 const BAR_W = 66;
 const BAR_H = 20;
@@ -125,56 +127,45 @@ function StoneBar({ type = 'hp', value = 0, max = 1 }) {
 }
 
 export default function CharacterPanel({
-  playerClass,
+  player_class,
   level,
-  characterName,
+  character_name,
   hp,
-  maxHp,
+  max_hp,
   mana,
-  maxMana,
+  max_mana,
   endurance,
-  maxEndurance,
+  max_endurance,
   xp,
-  xpNeeded,
-  inCombat,
-  isMeditating,
-  hpRegenRate = 0,
-  manaRegenRate = 0,
-  enduranceRegenRate = 0,
-  fleeExhausted = false,
-  damageRange = { min: 0, max: 0 },
-  gearBonuses = {},
-  inventoryLength = 0,
-  attackDelay = 0,
-  derivedStats = {},
-  inventoryPreview = [],
-  onInspectItem = () => {},
-  onSlotClick = () => {},
-  onSlotRightClick = () => {},
-  onInventoryOpen = () => {},
-  selectedSlot = null,
-  raceName = '',
-  deityName = '',
+  xp_needed,
+  in_combat,
+  is_meditating,
+  hp_regen_rate = 0,
+  mana_regen_rate = 0,
+  endurance_regen_rate = 0,
+  flee_exhausted = false,
+  damage_range = { min: 0, max: 0 },
+  gear_bonuses = {},
+  inventory_length = 0,
+  attack_delay = 0,
+  derived_stats = {},
+  stat_totals = {},
+  inventory_preview = [],
+  on_inspect_item = () => {},
+  on_slot_click = () => {},
+  on_slot_right_click = () => {},
+  on_inventory_open = () => {},
+  selected_slot = null,
+  race_name = '',
+  deity_name = '',
   currency,
-  effects = []
+  effects = [],
+  resource_type = 'melee'
 }) {
-  const bonuses = gearBonuses || {};
-  const stats = derivedStats || {};
+  const bonuses = gear_bonuses || {};
+  const stats = stat_totals || {};
+  const derived = derived_stats || {};
 
-  const buildItemTooltip = (item) => {
-    if (!item) return '';
-    const lines = [];
-    if (item.name) lines.push(item.name);
-    if (item.slot) lines.push(`Slot: ${item.slot}`);
-    if (item.quantity > 1) lines.push(`Qty: ${item.quantity}`);
-    if (item.bonuses) {
-      const bonusParts = Object.entries(item.bonuses)
-        .filter(([, v]) => v)
-        .map(([k, v]) => `${k.toUpperCase()}: ${v}`);
-      if (bonusParts.length) lines.push(bonusParts.join('  '));
-    }
-    return lines.join('\n');
-  };
 
   const renderAttrRow = (label, value) => (
     <div className="stone-attr__row">
@@ -184,70 +175,37 @@ export default function CharacterPanel({
   );
 
   const combinedStatsLines = [
-    { text: `Damage: ${damageRange?.min ?? 0}-${damageRange?.max ?? 0}${bonuses.damage ? ` (+${bonuses.damage} gear)` : ''}` },
-    { text: `Delay: ${attackDelay}ms${bonuses.haste ? ` (haste ${bonuses.haste}%)` : ''}` },
-    { text: `STR ${bonuses.str || 0} || STA ${bonuses.sta || 0}` },
-    { text: `AGI ${bonuses.agi || 0} || DEX ${bonuses.dex || 0}` },
-    { text: `INT ${bonuses.int || 0} || WIS ${bonuses.wis || 0}` },
-    { text: `CHA ${bonuses.cha || 0} || AC ${bonuses.ac || 0}` },
-    { text: `MR ${bonuses.mr || 0} ||  FR ${bonuses.fr || 0}`, className: 'stone-attr__value--resists' },
-    { text: `CR ${bonuses.cr || 0} || PR ${bonuses.pr || 0}` },
-    { text: `DR ${bonuses.dr || 0} || Tot ${bonuses.totalResist || 0}`, className: 'stone-attr__value--resistsbot' },
-    { text: `Spell Dmg +${stats.spellDmgMod || 0}%` },
-    { text: `Heal Mod +${stats.healMod || 0}%` }
+    { text: `Damage: ${damage_range?.min || 0}-${damage_range?.max || 0}${bonuses.damage ? ` (+${bonuses.damage} gear)` : ''}` },
+    { text: `Delay: ${attack_delay}ms${bonuses.haste ? ` (haste ${bonuses.haste}%)` : ''}` },
+    { text: `STR ${stats.str || 0} || STA ${stats.sta || 0}` },
+    { text: `AGI ${stats.agi || 0} || DEX ${stats.dex || 0}` },
+    { text: `INT ${stats.int || 0} || WIS ${stats.wis || 0}` },
+    { text: `CHA ${stats.cha || 0} || AC ${stats.ac || 0}` },
+    { text: `MR ${stats.mr || 0} ||  FR ${stats.fr || 0}`, className: 'stone-attr__value--resists' },
+    { text: `CR ${stats.cr || 0} || PR ${stats.pr || 0}` },
+    { text: `DR ${stats.dr || 0} || Tot ${(stats.mr || 0) + (stats.fr || 0) + (stats.cr || 0) + (stats.pr || 0) + (stats.dr || 0)}`, className: 'stone-attr__value--resistsbot' },
+    { text: `Spell Dmg +${derived.spell_dmg_mod || 0}%` },
+    { text: `Heal Mod +${derived.heal_mod || 0}%` }
   ];
 
-  const handleSkillsClick = () => {
-    alert('Skills coming soon!');
-  };
 
   const handleInventoryClick = () => {
-    if (onInventoryOpen) {
-      onInventoryOpen();
+    if (on_inventory_open) {
+      on_inventory_open();
     }
   };
 
-  const slotLabels = [
-    'Head',
-    'Face',
-    'Ear 1',
-    'Ear 2',
-    'Neck',
-    'Shoul.',
-    'Arms',
-    'Wr1st',
-    'Wrist',
-    'Hands',
-    'Chest',
-    'Back',
-    'Waist',
-    'Legs',
-    'Feet',
-    'F1nger',
-    'Finger',
-    'Pri',
-    'Sec',
-    'Range',
-    'Ammo',
-    'Charm',
-    '1',
-    '2',
-    '3',
-    '4',
-    '5',
-    '6',
-    '7',
-    '8'
-  ];
+  // Get slot labels from utility (derived from slotOrder)
+  const slotLabels = get_slot_labels();
 
   return (
     <div className="stone-card">
       <div className="stone-card__body stone-card__body--compact">
         <div className="stone-stats-wrapper">
           <div className="stone-stats-header stone-attr__row stone-attr__row--stacked">
-            <div className="stone-card__name">{characterName}</div>
-            <div className="stone-card__meta">{raceName} | {playerClass.name}</div>
-            <div className="stone-card__meta">Lvl {level}{deityName ? ` | ${deityName}` : ''}</div>
+            <div className="stone-card__name">{character_name}</div>
+            <div className="stone-card__meta">{race_name} | {player_class.name}</div>
+            <div className="stone-card__meta">Lvl {level}{deity_name ? ` | ${deity_name}` : ''}</div>
           </div>
 
           <div className="stone-attr">
@@ -264,9 +222,6 @@ export default function CharacterPanel({
               </div>
             </div>
             <div className="stone-button-row">
-            <button className="stone-button" onClick={handleSkillsClick}>
-              Skills
-            </button>
             <button className="stone-button" onClick={handleInventoryClick}>
               Bags
             </button>
@@ -281,35 +236,35 @@ export default function CharacterPanel({
                 className="stone-row stone-row--tight"
                 style={{ justifyContent: 'space-between', textAlign: 'left' }}
               >
-                <span className="stone-label hp" style={{ color: '#b22222', fontSize: '16px' }}>HP {inCombat && '⚔️'}</span>
+                <span className="stone-label hp" style={{ color: '#b22222', fontSize: '16px' }}>HP {in_combat && '⚔️'}</span>
                   <span className="stone-value" style={{ color: '#b22222', position: 'relative', top: '-3px', fontSize: '16px' }}>
-                    {hp} / {maxHp}
-                    <span className={`stone-regen${fleeExhausted ? ' stone-regen--debuff' : ''}`}>+{hpRegenRate}</span>
+                    {hp} / {max_hp}
+                    <span className={`stone-regen${flee_exhausted ? ' stone-regen--debuff' : ''}`}>+{hp_regen_rate}</span>
                   </span>
                 </div>
               <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '-12px' }}>
-                <StoneBar type="hp" value={hp} max={maxHp} />
+                <StoneBar type="hp" value={hp} max={max_hp} />
               </div>
             </div>
 
-            {playerClass.isCaster && (
+            {(resource_type === 'caster' || resource_type === 'hybrid') && (
               <div className="stone-block">
                 <div
                   className="stone-row stone-row--tight"
                   style={{ justifyContent: 'space-between', textAlign: 'left', gap: '6px' }}
                 >
-                  <span className="stone-label mana" style={{ color: '#2b6cb0', fontSize: '16px' }}>Mana {isMeditating && '🪑'}</span>
+                  <span className="stone-label mana" style={{ color: '#2b6cb0', fontSize: '16px' }}>Mana {is_meditating && '🪑'}</span>
                   <span className="stone-value" style={{ color: '#2b6cb0', position: 'relative', top: '-3px', fontSize: '16px' }}>
-                    {mana} / {maxMana}
-                    <span className={`stone-regen${fleeExhausted ? ' stone-regen--debuff' : ''}`}>+{manaRegenRate}</span>
+                    {mana} / {max_mana}
+                    <span className={`stone-regen${flee_exhausted ? ' stone-regen--debuff' : ''}`}>+{mana_regen_rate}</span>
                   </span>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '-12px' }}>
-                  <StoneBar type="mana" value={mana} max={maxMana} />
+                  <StoneBar type="mana" value={mana} max={max_mana} />
                 </div>
               </div>
             )}
-            {!playerClass.isCaster && (
+            {(resource_type === 'melee' || resource_type === 'hybrid') && (
               <div className="stone-block">
                 <div
                   className="stone-row stone-row--tight"
@@ -317,12 +272,12 @@ export default function CharacterPanel({
                 >
                   <span className="stone-label" style={{ color: '#f4f260ff', fontSize: '16px' }}>End.</span>
                   <span className="stone-value" style={{ color: '#f4f260ff', position: 'relative', top: '-3px', fontSize: '16px' }}>
-                    {endurance} / {maxEndurance}
-                    <span className={`stone-regen${fleeExhausted ? ' stone-regen--debuff' : ''}`}>+{enduranceRegenRate}</span>
+                    {endurance} / {max_endurance}
+                    <span className={`stone-regen${flee_exhausted ? ' stone-regen--debuff' : ''}`}>+{endurance_regen_rate}</span>
                   </span>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '-12px' }}>
-                  <StoneBar type="endurance" value={endurance} max={maxEndurance} />
+                  <StoneBar type="endurance" value={endurance} max={max_endurance} />
                 </div>
               </div>
             )}
@@ -334,22 +289,22 @@ export default function CharacterPanel({
                 >
                   <span className="stone-label xp" style={{ color: '#d4af37', fontSize: '16px' }}>XP</span>
                 <span className="stone-value" style={{ color: '#d4af37', position: 'relative', top: '-3px', fontSize: '16px' }}>
-                  {xp} / {xpNeeded}
-                  <span className="stone-regen">+{(derivedStats.xpBonus || 0)}%</span>
+                  {xp} / {xp_needed}
+                  <span className="stone-regen">+{(derived_stats.xpBonus || 0)}%</span>
                 </span>
               </div>
               <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '-12px' }}>
-                <StoneBar type="xp" value={xp} max={xpNeeded} />
+                <StoneBar type="xp" value={xp} max={xp_needed} />
               </div>
             </div>
 
           <div className="stone-inventory">
-            <div className="stone-inventory__title">Carry Capacity: {stats.carryCap || 0}</div>
+            <div className="stone-inventory__title">Carry Capacity: {derived.carry_cap || 0}</div>
             <div className="stone-inventory-grid">
               {Array.from({ length: slotLabels.length }).map((_, idx) => {
-                const item = inventoryPreview[idx];
+                const item = inventory_preview[idx];
                 const label = slotLabels[idx] || `${idx + 1}`;
-                const isSelected = selectedSlot === idx;
+                const isSelected = selected_slot === idx;
                 return (
                   <div
                     key={idx}
@@ -358,16 +313,16 @@ export default function CharacterPanel({
                       e.preventDefault();
                       e.stopPropagation();
                       if (e.shiftKey && item) {
-                        onInspectItem(item);
+                        on_inspect_item(item);
                       } else {
-                        onSlotClick(idx);
+                        on_slot_click(idx);
                       }
                     }}
                     onContextMenu={(e) => {
                       e.preventDefault();
                       e.stopPropagation();
                       if (item && item.stackable && item.quantity > 1) {
-                        onSlotRightClick(idx);
+                        on_slot_right_click(idx);
                       }
                     }}
                     style={{ cursor: 'pointer' }}
@@ -377,24 +332,24 @@ export default function CharacterPanel({
                         className="stone-slot__item"
                         role="button"
                         tabIndex={0}
-                        title={buildItemTooltip(item)}
+                        title={build_item_tooltip(item)}
                         onKeyDown={(e) => {
                           if (e.key === 'Enter' || e.key === ' ') {
                             e.preventDefault();
                             e.stopPropagation();
-                            onSlotClick(idx);
+                            on_slot_click(idx);
                           }
                         }}
                       >
                         <div className="stone-slot__icon-wrap">
-                          {typeof item.iconIndex === 'number' ? (
-                            <EqIcon index={item.iconIndex} size={32} cols={6} sheet="/stone-ui/itemicons/items1.png" />
+                          {typeof item.icon_index === 'number' ? (
+                            <Icon index={item.icon_index} size={32} cols={6} sheet="/stone-ui/itemicons/items1.png" />
                           ) : (
                             <div className="stone-slot__icon-fallback" />
                           )}
-                          {item.bagSlots && item.contents ? (
+                          {item.bag_slots && item.contents ? (
                             <span className="stone-slot__qty">
-                              x{item.contents.filter(c => c).length}/{item.bagSlots}
+                              x{item.contents.filter(c => c).length}/{item.bag_slots}
                             </span>
                           ) : item.quantity > 1 ? (
                             <span className="stone-slot__qty">x{item.quantity}</span>
