@@ -250,7 +250,30 @@ export function add_item_to_inventory(slots, item, qty = 1, context = {}) {
       }
 
       if (remaining_qty > 0) {
-        add_log('Inventory full!', 'error')
+        // Try to create stacks inside bags
+        for (let i = CARRY_START; i < slotOrder.length && remaining_qty > 0; i += 1) {
+          const bag = next[i]
+          if (!bag || !bag.bag_slots) continue
+
+          // Ensure contents array exists
+          const contents = Array.isArray(bag.contents) && bag.contents.length === bag.bag_slots
+            ? bag.contents
+            : Array(bag.bag_slots).fill(null)
+
+          const empty_bag_idx = contents.findIndex((c) => !c)
+          if (empty_bag_idx !== -1) {
+            const max_stack = item.max_stack ?? 1
+            const stack_qty = Math.min(remaining_qty, max_stack)
+            const updated_contents = [...contents]
+            updated_contents[empty_bag_idx] = { ...item, quantity: stack_qty }
+            next[i] = { ...bag, contents: updated_contents }
+            remaining_qty -= stack_qty
+          }
+        }
+
+        if (remaining_qty > 0) {
+          add_log('Inventory full!', 'error')
+        }
       }
 
       schedule_save({ inventory: true }, save_immediate ? { immediate: true } : {})
@@ -274,11 +297,15 @@ export function add_item_to_inventory(slots, item, qty = 1, context = {}) {
     // Try bags in inventory slots
     for (let i = CARRY_START; i < slotOrder.length; i += 1) {
       const bag = next[i]
-      if (!bag || !bag.bag_slots || !bag.contents) continue
+      if (!bag || !bag.bag_slots) continue
 
-      const empty_bag_idx = bag.contents.findIndex((c) => !c)
+      const contents = Array.isArray(bag.contents) && bag.contents.length === bag.bag_slots
+        ? bag.contents
+        : Array(bag.bag_slots).fill(null)
+
+      const empty_bag_idx = contents.findIndex((c) => !c)
       if (empty_bag_idx !== -1) {
-        const updated_bag = { ...bag, contents: [...bag.contents] }
+        const updated_bag = { ...bag, contents: [...contents] }
         updated_bag.contents[empty_bag_idx] = { ...item, quantity: add_qty }
         next[i] = updated_bag
         schedule_save({ inventory: true }, save_immediate ? { immediate: true } : {})

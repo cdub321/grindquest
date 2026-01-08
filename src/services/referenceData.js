@@ -536,7 +536,14 @@ export async function fetch_spells_learnable_at_level(class_id, level) {
     // classes format: {"5": 61, "11": 49} - class ID (string) maps to learn level
     const class_id_str = String(class_id)
     const learnable = (data || []).filter((spell) => {
-      const classes = spell.classes || {}
+      let classes = spell.classes || {}
+      if (typeof classes === 'string') {
+        try {
+          classes = JSON.parse(classes)
+        } catch {
+          classes = {}
+        }
+      }
       const learn_level = classes[class_id_str]
       return learn_level !== undefined && Number(learn_level) === level
     })

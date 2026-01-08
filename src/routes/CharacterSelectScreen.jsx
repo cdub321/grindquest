@@ -1,8 +1,8 @@
 import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import '../App.css'
-import { get_session, fetch_characters, delete_character, create_character } from '../services/playerStorage'
-import { fetch_classes_catalog, fetch_races, fetch_deities, fetch_class, fetch_race, fetch_deity, fetch_race_class_allowed, fetch_deity_class_allowed, fetch_race_deity_allowed, fetch_camps_by_zone } from '../services/referenceData'
+import { get_session, fetch_characters, delete_character, create_character, learn_spell } from '../services/playerStorage'
+import { fetch_classes_catalog, fetch_races, fetch_deities, fetch_class, fetch_race, fetch_deity, fetch_race_class_allowed, fetch_deity_class_allowed, fetch_race_deity_allowed, fetch_camps_by_zone, fetch_spells_learnable_at_level } from '../services/referenceData'
 import { CharacterSelectPanel, CharacterCreatePanel } from '../components/CharacterSelectAndCreate'
 
 function CharacterSelectScreen({ onSignOut }) {
@@ -290,7 +290,30 @@ function CharacterSelectScreen({ onSignOut }) {
       }
 
       // Create character
-      await create_character(user_id, payload)
+      const created = await create_character(user_id, payload)
+      
+      // Auto-learn level 1 spells/abilities for the class
+      if (created?.id) {
+        try {
+          const level1_spells = await fetch_spells_learnable_at_level(create_data.classKey, 1)
+          if (Array.isArray(level1_spells) && level1_spells.length > 0) {
+            await Promise.all(
+              level1_spells.map(async (spell) => {
+                try {
+                  await learn_spell(created.id, spell.id)
+                } catch (err) {
+                  // Ignore duplicate errors
+                  if (err?.code !== '23505') {
+                    console.error(`Failed to auto-learn spell ${spell.id}:`, err)
+                  }
+                }
+              })
+            )
+          }
+        } catch (err) {
+          console.error('Failed to auto-learn level 1 spells:', err)
+        }
+      }
       
       // Close modal
       set_show_create_modal(false)

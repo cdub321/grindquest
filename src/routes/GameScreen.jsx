@@ -328,6 +328,7 @@ function GameScreen({ onSignOut }) {
   
   // Create a ref to hold handle_mob_death (will be set after useCombat initializes)
   const handle_mob_death_ref = useRef(() => {})
+  const get_stat_modifiers_ref = useRef(() => {})
   
   // Create a ref to hold change_zone function (will be set after useZone initializes)
   const change_zone_ref = useRef(() => {})
@@ -456,6 +457,13 @@ function GameScreen({ onSignOut }) {
       handle_mob_death_ref.current = combat_hook.handle_mob_death
     }
   }, [combat_hook.handle_mob_death])
+
+  // Keep stat modifiers getter in a ref for useZone
+  useEffect(() => {
+    if (effects_hook.get_stat_modifiers) {
+      get_stat_modifiers_ref.current = effects_hook.get_stat_modifiers
+    }
+  }, [effects_hook.get_stat_modifiers])
   
   // Initialize useZone hook (needs zone/camp data)
   const zone_hook = use_zone(
