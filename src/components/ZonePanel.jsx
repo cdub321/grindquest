@@ -24,7 +24,12 @@ export default function ZonePanel({
   handle_chat_submit = () => {},
   bg_url = '/stone-ui/zonepanelbacks/stock.png',
   is_loading_bg = false,
-  zone_connections = [] // Array of {from_zone, to_zone} for current zone
+  zone_connections = [], // Array of {from_zone, to_zone} for current zone
+  is_traveling = false,
+  travel_remaining = 0,
+  travel_initial_distance = 0,
+  travel_target_camp_name = null,
+  on_nudge_camp = null
 }) {
   const currentZone = zones[current_zone_id] || { name: 'Unknown' };
   const biomeColors = {
@@ -84,7 +89,39 @@ export default function ZonePanel({
           height: '75%'
         }}
       />
+      {on_nudge_camp && (
+        <button
+          onClick={() => on_nudge_camp()}
+          className="absolute top-2 right-2 z-20 btn"
+          style={{ fontSize: '11px', padding: '4px 8px', opacity: 0.7 }}
+          title="Nudge camp spawn timer"
+        >
+          Nudge
+        </button>
+      )}
       <div className="relative p-4 space-y-4 z-10 pb-72" style={{ minHeight: '75%' }}>
+        {/* Travel Progress Bar */}
+        {is_traveling && travel_initial_distance > 0 && (
+          <div className="mb-4 bg-slate-900/80 border rounded-lg p-3" style={{ borderColor: biomeColor }}>
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-sm font-semibold" style={{ color: biomeColor }}>
+                Traveling to {travel_target_camp_name || 'camp'}...
+              </span>
+              <span className="text-xs text-gray-300">
+                {Math.max(0, Math.min(100, Math.round(((travel_initial_distance - travel_remaining) / travel_initial_distance) * 100)))}%
+              </span>
+            </div>
+            <div className="w-full bg-slate-800 rounded-full h-3 overflow-hidden border border-slate-700">
+              <div
+                className="h-full transition-all duration-300 ease-linear"
+                style={{
+                  width: `${Math.max(0, Math.min(100, ((travel_initial_distance - travel_remaining) / travel_initial_distance) * 100))}%`,
+                  background: `linear-gradient(to right, ${biomeColor}, ${biomeColor}dd)`
+                }}
+              />
+            </div>
+          </div>
+        )}
 
         <div className="relative w-full h-64 flex items-center justify-center overflow-visible">
           {/* Center hub */}
@@ -126,7 +163,7 @@ export default function ZonePanel({
             </button>
           ))}
           {hoverHub && (
-            <div className="absolute left-1/2 -translate-x-1/2 -bottom-2 translate-y-full bg-slate-900/90 text-xs text-gray-100 border border-blue-900 rounded p-2 w-64 shadow-lg pointer-events-none">
+            <div className="absolute left-1/2 -translate-x-1/2 -bottom-2 translate-y-full bg-slate-900/90 text-xs text-gray-100 border border-slate-700 rounded p-2 w-64 shadow-lg pointer-events-none">
               <div className="font-semibold text-blue-200 mb-1">{hoverHub.label}</div>
               {hoverHub.type === 'camp' && (
                 <>

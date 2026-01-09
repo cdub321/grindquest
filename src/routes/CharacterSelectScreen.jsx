@@ -403,16 +403,13 @@ function CharacterSelectScreen({ onSignOut }) {
               }
             }}
           >
-            <div className="bg-slate-800 rounded-lg p-6 max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-              <div className="flex justify-between items-center mb-4">
-                <h2 className="text-2xl font-bold text-blue-300">Create Character</h2>
-                <button
-                  onClick={() => set_show_create_modal(false)}
-                  className="text-gray-400 hover:text-white text-2xl"
-                >
-                  ×
-                </button>
-              </div>
+            <div className="relative max-h-[90vh] overflow-y-auto">
+              <button
+                onClick={() => set_show_create_modal(false)}
+                className="absolute top-2 right-2 z-10 text-gray-400 hover:text-white text-2xl"
+              >
+                ×
+              </button>
               <CharacterCreatePanel
                 classes={class_cache}
                 races={Object.values(race_cache)}

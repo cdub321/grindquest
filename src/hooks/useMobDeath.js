@@ -1,5 +1,4 @@
 import { useRef, useCallback } from 'react';
-import { CURRENCY_CONVERSION } from '../utils/gameConstants';
 import { silver_to_currency } from '../utils/currencyUtils';
 import { fetch_loot_table, fetch_loot_table_entries, fetch_lootdrop_entries, fetch_item } from '../services/referenceData';
 import { create_item_instance } from '../utils/itemInstance';
@@ -93,9 +92,8 @@ export function use_mob_death({
         const avg_coin = loot_table.avgcoin;
         
         if (avg_coin && avg_coin > 0) {
-          // Convert avgcoin (assumed copper) -> total silver -> currency object
-          const total_silver = Math.floor(avg_coin / CURRENCY_CONVERSION.COPPER_PER_SILVER);
-          const currency_delta = silver_to_currency(total_silver);
+          // avgcoin is already in silver
+          const currency_delta = silver_to_currency(avg_coin);
           const { platinum = 0, gold = 0, silver = 0 } = currency_delta;
           
           if (platinum > 0 || gold > 0 || silver > 0) {

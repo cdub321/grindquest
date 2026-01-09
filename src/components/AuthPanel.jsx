@@ -13,7 +13,7 @@ export default function AuthPanel({ onSignIn }) {
   };
 
   return (
-    <div className="max-w-md mx-auto bg-slate-800 border-2 border-blue-900 rounded-lg p-6 text-gray-100">
+    <div className="max-w-md mx-auto bg-slate-800 border-2 border-slate-700 rounded-lg p-6 text-gray-100">
       <h2 className="text-2xl font-bold text-center text-blue-300 mb-4">
         {isLogin ? 'Log In' : 'Sign Up'}
       </h2>
@@ -23,7 +23,7 @@ export default function AuthPanel({ onSignIn }) {
           value={email}
           onChange={(e) => setEmail(e.target.value)}
           placeholder="Email"
-          className="w-full bg-slate-700 border border-blue-900 rounded px-3 py-2 text-white"
+          className="w-full bg-slate-700 border border-slate-700 rounded px-3 py-2 text-white"
           required
         />
         <input
@@ -31,7 +31,7 @@ export default function AuthPanel({ onSignIn }) {
           value={password}
           onChange={(e) => setPassword(e.target.value)}
           placeholder="Password"
-          className="w-full bg-slate-700 border border-blue-900 rounded px-3 py-2 text-white"
+          className="w-full bg-slate-700 border border-slate-700 rounded px-3 py-2 text-white"
           required
         />
         <button

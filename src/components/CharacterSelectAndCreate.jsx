@@ -11,16 +11,19 @@ export function CharacterSelectPanel({
 }) {
 
   return (
-    <div className="max-w-4xl mx-auto bg-slate-800 border-2 border-blue-900 rounded-lg p-6 text-gray-100">
+    <div className="max-w-4xl mx-auto bg-slate-800 border-2 border-slate-700 rounded-lg p-6 text-gray-100">
       <div className="flex justify-between items-center mb-4">
-        <h2 className="text-2xl font-bold text-blue-300">Select Your Character</h2>
-        <button
-          onClick={onCreateClick}
-          className="bg-green-600 hover:bg-green-700 text-white font-semibold px-4 py-2 rounded"
-          disabled={characters.length >= 6}
-        >
-          {characters.length >= 6 ? 'All 6 slots used' : 'Create New'}
-        </button>
+        <div className="flex-1"></div>
+        <h2 className="text-2xl font-bold text-blue-300 flex-1 text-center">Select Your Character</h2>
+        <div className="flex-1 flex justify-end">
+          <button
+            onClick={onCreateClick}
+            className="btn success"
+            disabled={characters.length >= 6}
+          >
+            {characters.length >= 6 ? 'All 6 slots used' : 'Create New'}
+          </button>
+        </div>
       </div>
       {characters.length === 0 ? (
         <p className="text-gray-300">No characters yet. Create one to begin.</p>
@@ -52,18 +55,14 @@ export function CharacterSelectPanel({
                   <button
                     onClick={() => onSelect(c.id)}
                     disabled={isDead}
-                    className={`text-sm font-semibold px-3 py-1 rounded ${
-                      isDead
-                        ? 'bg-gray-600 text-gray-400 cursor-not-allowed'
-                        : 'bg-blue-600 hover:bg-blue-700 text-white'
-                    }`}
+                    className="btn primary"
                     title={isDead ? 'This character is dead and cannot be played' : ''}
                   >
                     Play
                   </button>
                   <button
                     onClick={() => onDelete(c.id)}
-                    className="bg-red-600 hover:bg-red-700 text-white text-sm font-semibold px-3 py-1 rounded"
+                    className="btn danger"
                     disabled={characters.length <= 1}
                   >
                     Delete
@@ -174,8 +173,8 @@ export function CharacterCreatePanel({
   };
 
   return (
-    <div className="max-w-3xl mx-auto bg-slate-800 border-2 border-blue-900 rounded-lg p-6 text-gray-100">
-      <h2 className="text-2xl font-bold text-blue-300 mb-4">Create Character</h2>
+    <div className="max-w-3xl mx-auto bg-slate-800 border-2 border-slate-700 rounded-lg p-6 text-gray-100">
+      <h2 className="text-2xl font-bold text-blue-300 mb-4 text-center">Create Character</h2>
       <form
         onSubmit={(e) => {
           e.preventDefault();
@@ -195,33 +194,33 @@ export function CharacterCreatePanel({
             name="name"
             required
             maxLength={20}
-            className="w-full bg-slate-700 border border-blue-900 rounded px-3 py-2 text-white"
+            className="w-full bg-slate-700 border border-slate-700 rounded px-3 py-2 text-white"
             placeholder="Enter a name"
           />
         </div>
-        <div>
-          <label className="block text-sm text-gray-300 mb-1">Class</label>
-          <select
-            name="classKey"
-            value={selectedClass}
-            onChange={(e) => setSelectedClass(e.target.value)}
-            className="w-full bg-slate-700 border border-blue-900 rounded px-3 py-2 text-white capitalize"
-          >
-            {allowed_class_ids.map(([key, cls]) => (
-              <option key={key} value={key}>
-                {cls.name}
-              </option>
-            ))}
-          </select>
-        </div>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <label className="block text-sm text-gray-300 mb-1">Class</label>
+            <select
+              name="classKey"
+              value={selectedClass}
+              onChange={(e) => setSelectedClass(e.target.value)}
+              className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-white capitalize"
+            >
+              {allowed_class_ids.map(([key, cls]) => (
+                <option key={key} value={key}>
+                  {cls.name}
+                </option>
+              ))}
+            </select>
+          </div>
           <div>
             <label className="block text-sm text-gray-300 mb-1">Race</label>
             <select
               name="raceId"
               value={selectedRace}
               onChange={(e) => setSelectedRace(e.target.value)}
-              className="w-full bg-slate-700 border border-blue-900 rounded px-3 py-2 text-white capitalize"
+              className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-white capitalize"
             >
               {races.map((r) => (
                 <option key={r.r_id} value={r.r_id}>
@@ -230,13 +229,15 @@ export function CharacterCreatePanel({
               ))}
             </select>
           </div>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
             <label className="block text-sm text-gray-300 mb-1">Deity</label>
             <select
               name="deityId"
               value={selectedDeity}
               onChange={(e) => setSelectedDeity(e.target.value)}
-              className="w-full bg-slate-700 border border-blue-900 rounded px-3 py-2 text-white capitalize"
+              className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-white capitalize"
             >
               {allowed_deities.map((d) => (
                 <option key={d.d_id} value={d.d_id}>
@@ -245,16 +246,16 @@ export function CharacterCreatePanel({
               ))}
             </select>
           </div>
-        </div>
-        <div>
-          <label className="block text-sm text-gray-300 mb-1">Mode</label>
-          <select
-            name="mode"
-            className="w-full bg-slate-700 border border-blue-900 rounded px-3 py-2 text-white capitalize"
-          >
-            <option value="normal">Normal</option>
-            <option value="hardcore">Hardcore (death resets run)</option>
-          </select>
+          <div>
+            <label className="block text-sm text-gray-300 mb-1">Mode</label>
+            <select
+              name="mode"
+              className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-white capitalize"
+            >
+              <option value="normal">Normal</option>
+              <option value="hardcore">Hardcore (death resets run)</option>
+            </select>
+          </div>
         </div>
         <div>
           <div className="flex items-center justify-between mb-2">
@@ -262,14 +263,14 @@ export function CharacterCreatePanel({
           </div>
           <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
             {statOrder.map((key) => (
-              <div key={key} className="flex items-center justify-between bg-slate-700 border border-blue-900 rounded px-2 py-1">
+              <div key={key} className="flex items-center justify-between bg-slate-700 border border-slate-700 rounded px-2 py-1">
                 <span className="text-sm text-gray-100">{statLabels[key]}</span>
                 <div className="flex items-center gap-2">
                   <button
                     type="button"
                     onClick={() => adjustStat(key, -1)}
                     disabled={stats[key] <= 0}
-                    className="bg-slate-800 border border-blue-900 rounded px-2 text-white disabled:opacity-40"
+                    className="bg-slate-800 border border-slate-700 rounded px-2 text-white disabled:opacity-40"
                   >
                     -
                   </button>
@@ -278,7 +279,7 @@ export function CharacterCreatePanel({
                     type="button"
                     onClick={() => adjustStat(key, 1)}
                     disabled={statPoints <= 0}
-                    className="bg-slate-800 border border-blue-900 rounded px-2 text-white disabled:opacity-40"
+                    className="bg-slate-800 border border-slate-700 rounded px-2 text-white disabled:opacity-40"
                   >
                     +
                   </button>
@@ -287,13 +288,15 @@ export function CharacterCreatePanel({
             ))}
           </div>
         </div>
-        <button
-          type="submit"
-          className="bg-green-600 hover:bg-green-700 text-white font-semibold px-4 py-2 rounded"
-          disabled={statPoints !== 0}
-        >
-          {statPoints === 0 ? 'Create' : 'Spend all points to create'}
-        </button>
+        <div className="flex justify-center">
+          <button
+            type="submit"
+            className="btn success"
+            disabled={statPoints !== 0}
+          >
+            {statPoints === 0 ? 'Create' : 'Spend all points to create'}
+          </button>
+        </div>
       </form>
     </div>
   );

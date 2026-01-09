@@ -61,6 +61,9 @@ export function use_zone(
 ) {
   // Travel state (transient UI state)
   const [is_traveling, set_is_traveling] = useState(false)
+  const [travel_remaining, set_travel_remaining] = useState(0)
+  const [travel_initial_distance, set_travel_initial_distance] = useState(0)
+  const [travel_target_camp_name, set_travel_target_camp_name] = useState(null)
   const travel_timer_ref = useRef(null)
   const travel_target_ref = useRef(null)
   const travel_remaining_ref = useRef(0)
@@ -138,6 +141,9 @@ export function use_zone(
       set_is_traveling(false)
       is_traveling_ref.current = false
       travel_target_ref.current = null
+      set_travel_remaining(0)
+      set_travel_initial_distance(0)
+      set_travel_target_camp_name(null)
       if (travel_timer_ref.current) {
         clearTimeout(travel_timer_ref.current)
         travel_timer_ref.current = null
@@ -203,6 +209,9 @@ export function use_zone(
     set_is_traveling(true)
     travel_target_ref.current = camp.id
     travel_remaining_ref.current = distance
+    set_travel_remaining(distance)
+    set_travel_initial_distance(distance)
+    set_travel_target_camp_name(camp.name || 'camp')
     
     const tick_distance = 10
     const tick_ms = 3000
@@ -255,6 +264,7 @@ export function use_zone(
       if (!is_traveling_ref.current) return
       
       travel_remaining_ref.current -= tick_distance
+      set_travel_remaining(Math.max(0, travel_remaining_ref.current))
       
       // Check for ambush
       if (ambush_chance > 0 && Math.random() < ambush_chance) {
@@ -265,6 +275,9 @@ export function use_zone(
             // Ambushed!
             set_is_traveling(false)
             travel_target_ref.current = null
+            set_travel_remaining(0)
+            set_travel_initial_distance(0)
+            set_travel_target_camp_name(null)
             if (travel_timer_ref.current) {
               clearTimeout(travel_timer_ref.current)
               travel_timer_ref.current = null
@@ -286,6 +299,9 @@ export function use_zone(
       // Arrive at destination
       set_is_traveling(false)
       travel_target_ref.current = null
+      set_travel_remaining(0)
+      set_travel_initial_distance(0)
+      set_travel_target_camp_name(null)
       const new_camp_id = Number(camp.id)
       set_camp_id(new_camp_id)
       schedule_save({ character: { current_camp_id: new_camp_id } }, { immediate: true })
@@ -348,6 +364,9 @@ export function use_zone(
       set_is_traveling(false)
       is_traveling_ref.current = false
       travel_target_ref.current = null
+      set_travel_remaining(0)
+      set_travel_initial_distance(0)
+      set_travel_target_camp_name(null)
       if (travel_timer_ref.current) {
         clearTimeout(travel_timer_ref.current)
         travel_timer_ref.current = null
@@ -531,6 +550,7 @@ export function use_zone(
   ])
   
   // Start spawn timer (called when mob dies)
+  // Uses refs to store the latest callback so nested timeouts always use current version
   const start_spawn_timer = useCallback(() => {
     // Clear any existing timer
     if (spawn_timer_ref.current) {
@@ -556,7 +576,14 @@ export function use_zone(
     // Start timer
     spawn_timer_ref.current = setTimeout(() => {
       spawn_timer_ref.current = null
-      spawn_mob()
+      const spawned = spawn_mob()
+      // If spawn failed, restart the timer
+      if (!spawned && current_camp_id && current_camp) {
+        const interaction_type = get_interaction_type_from_content_flags(current_camp.content_flags)
+        if (!interaction_type) {
+          start_spawn_timer()
+        }
+      }
     }, spawn_time_seconds * 1000)
   }, [current_camp, spawn_mob, add_log])
   
@@ -578,6 +605,7 @@ export function use_zone(
   // Initialize spawn timer when arriving at a camp (if no current mob)
   // This handles the case when character loads into a camp or arrives at a new camp
   // Also handles when mob dies (current_mob becomes null)
+  // Also restarts if spawn_mob changes (e.g., when camp_members loads)
   useEffect(() => {
     // Only start timer if:
     // 1. We have a camp
@@ -585,6 +613,7 @@ export function use_zone(
     // 3. No current mob exists
     // 4. No spawn timer already running
     // 5. Camp is an enemy camp (not merchant/banker/tradeskill)
+    // 6. Camp has members loaded (for spawning)
     if (!current_camp_id || !current_camp) return
     if (current_mob) return // Already have a mob
     if (spawn_timer_ref.current) return // Timer already running
@@ -592,15 +621,61 @@ export function use_zone(
     const interaction_type = get_interaction_type_from_content_flags(current_camp.content_flags)
     if (interaction_type) return // Non-enemy camp, don't spawn
     
+    // Check if camp_members are loaded for this camp
+    const members = camp_members[current_camp_id] || []
+    if (members.length === 0) return // Camp members not loaded yet, wait
+    
     // Start spawn timer
     if (start_spawn_timer) {
       start_spawn_timer()
     }
-  }, [current_camp_id, current_camp, start_spawn_timer, current_mob, camps_by_zone])
+  }, [current_camp_id, current_camp, start_spawn_timer, current_mob, camps_by_zone, camp_members])
+
+  // Nudge spawn timer - force restart it (clears existing timer if running)
+  const nudge_spawn_timer = useCallback(() => {
+    if (!current_camp_id || !current_camp) {
+      if (add_log) add_log('No camp selected.', 'error')
+      return false
+    }
+    if (current_mob) {
+      if (add_log) add_log('A mob is already spawned.', 'error')
+      return false // Already have a mob
+    }
+    
+    const interaction_type = get_interaction_type_from_content_flags(current_camp.content_flags)
+    if (interaction_type) {
+      if (add_log) add_log('This camp does not spawn mobs.', 'error')
+      return false // Non-enemy camp, can't spawn
+    }
+    
+    // Check if camp_members are loaded
+    const members = camp_members[current_camp_id] || []
+    if (members.length === 0) {
+      if (add_log) add_log('Camp members not loaded yet.', 'error')
+      return false
+    }
+    
+    // Clear any existing timer
+    if (spawn_timer_ref.current) {
+      clearTimeout(spawn_timer_ref.current)
+      spawn_timer_ref.current = null
+    }
+    
+    // Start spawn timer
+    if (start_spawn_timer) {
+      start_spawn_timer()
+      if (add_log) add_log('Spawn timer restarted.', 'system')
+      return true
+    }
+    return false
+  }, [current_camp_id, current_camp, current_mob, start_spawn_timer, camp_members, add_log])
 
   return {
     // State
     is_traveling,
+    travel_remaining,
+    travel_initial_distance,
+    travel_target_camp_name,
     available_zone_ids,
     
     // Functions
@@ -608,7 +683,8 @@ export function use_zone(
     change_camp,
     get_travel_distance,
     start_spawn_timer,
-    spawn_mob
+    spawn_mob,
+    nudge_spawn_timer
   }
 }
 

@@ -969,6 +969,11 @@ function GameScreen({ onSignOut }) {
             bg_url={zone_utils_hook.bg_url}
             is_loading_bg={zone_utils_hook.is_loading_bg}
             zone_connections={zone_connections[local_zone_id || character_data?.zone_id] || []}
+            is_traveling={zone_hook.is_traveling}
+            travel_remaining={zone_hook.travel_remaining}
+            travel_initial_distance={zone_hook.travel_initial_distance}
+            travel_target_camp_name={zone_hook.travel_target_camp_name}
+            on_nudge_camp={zone_hook.nudge_spawn_timer}
           />
           {current_camp && !interactions_hook.interaction && get_interaction_type_from_content_flags(current_camp.content_flags) && (
             <div className="mt-2 flex">

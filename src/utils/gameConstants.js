@@ -47,7 +47,6 @@ export const CRIT_CONSTANTS = {
  * Used for converting between currency denominations
  */
 export const CURRENCY_CONVERSION = {
-  COPPER_PER_SILVER: 10,
   SILVER_PER_GOLD: 10,
   GOLD_PER_PLATINUM: 10
 };

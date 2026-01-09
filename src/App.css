@@ -190,10 +190,15 @@ body {
   border: 1px solid #2f4a74 !important;
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
 }
-.bg-slate-700 { /* Matching default btn look */
-  background-color: #3c322a !important;
-  border: 1px solid #6c5742 !important;
+.bg-slate-700 {
+  background: var(--c-bg-inset) !important;
+  border: 1px solid var(--c-border-light) !important;
   color: var(--c-text-main);
+}
+
+select option {
+  background: #1f2937 !important;
+  color: var(--c-text-main) !important;
 }
 
 /* --- Console Area --- */
@@ -517,7 +522,6 @@ body {
 }
 .stone-label.gold { color: #e4c26b; }
 .stone-label.silver { color: #c7d1e4; }
-.stone-label.copper { color: #e0a87b; }
 .stone-label.plat { color: #d8d8d8; }
 
 .stone-value {
@@ -530,7 +534,6 @@ body {
 .stone-value.plat { color: #e3e3e3; }
 .stone-value.gold { color: #e4c26b; }
 .stone-value.silver { color: #c7d1e4; }
-.stone-value.copper { color: #e0a87b; }
 
 .stone-stats-wrapper {
   display: grid;

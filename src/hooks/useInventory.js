@@ -131,29 +131,21 @@ export function use_inventory(initial_slots, slots_ref, schedule_save, add_log =
       return
     }
     
-    // Prevent putting a bag into itself
+    // Prevent putting a bag with items into any bag slot (empty bags are allowed)
     if (source_item.bag_slots > 0 && slot_index_or_id >= 100) {
-      // Source is a bag, target is a bag slot - check if target is inside source
-      const parsed = parse_bag_slot(slot_index_or_id)
-      if (parsed) {
-        const { inventory_slot_id } = parsed
-        let source_slot_id
-        if (selected_slot >= 100) {
-          const src_parsed = parse_bag_slot(selected_slot)
-          source_slot_id = src_parsed ? src_parsed.inventory_slot_id : null
-        } else {
-          source_slot_id = get_slot_id(selected_slot)
+      // Check if bag has any items in it
+      const bag_contents = source_item.contents || []
+      const has_items = Array.isArray(bag_contents) && bag_contents.some(item => item !== null)
+      
+      if (has_items) {
+        // Source is a bag with items, target is a bag slot - prevent it
+        if (add_log) {
+          add_log('You cannot put a bag with items inside another bag.', 'error')
         }
-        
-        // If the target bag slot is inside the source bag, prevent it
-        if (source_slot_id !== null && source_slot_id === inventory_slot_id) {
-          if (add_log) {
-            add_log('You cannot put a bag inside itself.', 'error')
-          }
-          set_selected_slot(null)
-          return
-        }
+        set_selected_slot(null)
+        return
       }
+      // Empty bags are allowed in bag slots
     }
     
     // BAG SLOTS CAN HOLD ANYTHING - SKIP ALL VALIDATION FOR BAG SLOTS
@@ -358,10 +350,14 @@ export function use_inventory(initial_slots, slots_ref, schedule_save, add_log =
     const next = set_item_in_slot(slot_index_or_id, null)
     slots_ref.current = next
     set_current_slots([...next])
+    // Unselect the slot if it was selected
+    if (selected_slot === slot_index_or_id) {
+      set_selected_slot(null)
+    }
     if (add_log) add_log('Item destroyed.', 'system')
     schedule_save({ inventory: true }, { immediate: true })
     return next
-  }, [set_item_in_slot, slots_ref, set_current_slots, schedule_save, add_log])
+  }, [set_item_in_slot, slots_ref, set_current_slots, schedule_save, add_log, selected_slot, set_selected_slot])
   
   // Remove item from inventory (for selling, banking, etc.)
   const remove_item_from_inventory = useCallback((item_entry) => {

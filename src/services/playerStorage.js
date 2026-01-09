@@ -381,7 +381,7 @@ export async function save_spell_slots(character_id, { ability_slots = [], spell
   try {
     // Upsert ability slots (including clears)
     const ability_payload = (ability_slots || []).filter(
-      ({ spell_id, ability_slot }) => spell_id !== undefined && spell_id !== null && ability_slot >= 0 && ability_slot <= 6
+      ({ spell_id, ability_slot }) => spell_id !== undefined && spell_id !== null && (ability_slot === null || (ability_slot >= 0 && ability_slot <= 6))
     ).map(({ spell_id, ability_slot }) => ({
       character_id,
       spell_id,
@@ -389,16 +389,24 @@ export async function save_spell_slots(character_id, { ability_slots = [], spell
       spell_slot: null
     }))
 
+    // Update ability slots (spells should already be learned, so rows exist)
     if (ability_payload.length > 0) {
-      const { error } = await supabase
-        .from('character_spells')
-        .upsert(ability_payload, { onConflict: 'character_id,spell_id' })
-      if (error) throw error
+      for (const payload of ability_payload) {
+        const { error } = await supabase
+          .from('character_spells')
+          .update({
+            ability_slot: payload.ability_slot,
+            spell_slot: payload.spell_slot
+          })
+          .eq('character_id', payload.character_id)
+          .eq('spell_id', payload.spell_id)
+        if (error) throw error
+      }
     }
 
-    // Upsert spell slots (including clears)
+    // Update spell slots (spells should already be learned, so rows exist)
     const spell_payload = (spell_slots || []).filter(
-      ({ spell_id, spell_slot }) => spell_id !== undefined && spell_id !== null && spell_slot >= 0 && spell_slot <= 6
+      ({ spell_id, spell_slot }) => spell_id !== undefined && spell_id !== null && (spell_slot === null || (spell_slot >= 0 && spell_slot <= 6))
     ).map(({ spell_id, spell_slot }) => ({
       character_id,
       spell_id,
@@ -407,10 +415,17 @@ export async function save_spell_slots(character_id, { ability_slots = [], spell
     }))
 
     if (spell_payload.length > 0) {
-      const { error } = await supabase
-        .from('character_spells')
-        .upsert(spell_payload, { onConflict: 'character_id,spell_id' })
-      if (error) throw error
+      for (const payload of spell_payload) {
+        const { error } = await supabase
+          .from('character_spells')
+          .update({
+            ability_slot: payload.ability_slot,
+            spell_slot: payload.spell_slot
+          })
+          .eq('character_id', payload.character_id)
+          .eq('spell_id', payload.spell_id)
+        if (error) throw error
+      }
     }
 
     // Persist auto slots on character

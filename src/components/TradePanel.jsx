@@ -65,7 +65,7 @@ export default function TradePanel({
           <div className="text-lg font-bold text-blue-200">{title}</div>
           <button
             onClick={on_close}
-            className="text-xs px-2 py-1 rounded bg-slate-800 border border-blue-900 text-gray-200 hover:border-blue-600"
+            className="text-xs px-2 py-1 rounded bg-slate-800 border border-slate-700 text-gray-200 hover:border-blue-600"
           >
             Close
           </button>
@@ -73,7 +73,7 @@ export default function TradePanel({
         <div className="text-xs text-gray-300">
           {npc?.name || 'Tradeskill Station'}
         </div>
-        <div className="bg-slate-900/70 border border-blue-900 rounded p-4 text-center">
+        <div className="bg-slate-900/70 border border-slate-700 rounded p-4 text-center">
           <div className="text-gray-300">Not Implemented Yet</div>
         </div>
       </div>
@@ -115,7 +115,7 @@ export default function TradePanel({
     return (
       <div 
         key={is_bank ? row.id : `${row.item_id}-${row.price || 'p'}`} 
-        className="flex items-center justify-between text-sm text-gray-100 bg-slate-800/80 border border-blue-900 rounded px-2 py-1"
+        className="flex items-center justify-between text-sm text-gray-100 bg-slate-800/80 border border-slate-700 rounded px-2 py-1"
       >
         <div className="flex items-center gap-2">
           <Icon index={icon_index} size={22} />
@@ -167,7 +167,7 @@ export default function TradePanel({
     const clamped_qty = Math.max(1, Math.min(current_qty, qty));
 
     return (
-      <div key={entry.key} className="flex items-center justify-between text-sm text-gray-100 bg-slate-800/80 border border-blue-900 rounded px-2 py-1">
+      <div key={entry.key} className="flex items-center justify-between text-sm text-gray-100 bg-slate-800/80 border border-slate-700 rounded px-2 py-1">
         <div className="flex items-center gap-2">
           <Icon index={icon_index} size={22} />
           <div>
@@ -188,7 +188,7 @@ export default function TradePanel({
                 const val = Number(e.target.value) || 1;
                 setSellQtyByKey((prev) => ({ ...prev, [entry.key]: val }));
               }}
-              className="w-14 bg-slate-900 border border-blue-900 rounded px-1 py-0.5 text-xs text-gray-100"
+              className="w-14 bg-slate-900 border border-slate-700 rounded px-1 py-0.5 text-xs text-gray-100"
             />
           )}
           <button
@@ -264,7 +264,7 @@ export default function TradePanel({
 
           <div className="grid md:grid-cols-2 gap-3">
             {/* Source items (Bank or Merchant Stock) */}
-            <div className="bg-slate-900/70 border border-blue-900 rounded p-3 max-h-72 overflow-y-auto space-y-2">
+            <div className="bg-slate-900/70 border border-slate-700 rounded p-3 max-h-72 overflow-y-auto space-y-2">
               <div className="text-xs uppercase tracking-wide text-gray-400 mb-1">{source_label}</div>
               {is_bank && is_loading && <div className="text-xs text-gray-400">Loading bank...</div>}
               {!is_loading && source_items.length === 0 && <div className="text-xs text-gray-400">{source_empty_msg}</div>}
@@ -272,7 +272,7 @@ export default function TradePanel({
             </div>
 
             {/* Player inventory */}
-            <div className="bg-slate-900/70 border border-blue-900 rounded p-3 max-h-72 overflow-y-auto space-y-2">
+            <div className="bg-slate-900/70 border border-slate-700 rounded p-3 max-h-72 overflow-y-auto space-y-2">
               <div className="text-xs uppercase tracking-wide text-gray-400 mb-1">{player_label}</div>
               {player_inventory.length === 0 && <div className="text-xs text-gray-400">{player_empty_msg}</div>}
               {player_inventory.map(render_player_item)}
