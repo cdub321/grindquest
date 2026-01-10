@@ -64,7 +64,14 @@ export function use_zone_utils({
       // Listen for broadcast messages
       .on('broadcast', { event: 'message' }, ({ payload }) => {
         if (!payload) return;
-        set_messages((prev) => [...prev.slice(-99), payload]);
+        set_messages((prev) => {
+          // Check if this message already exists (prevent duplicates from echo)
+          const is_duplicate = prev.some(
+            (m) => m.user === payload.user && m.text === payload.text && m.ts === payload.ts
+          );
+          if (is_duplicate) return prev;
+          return [...prev.slice(-99), payload];
+        });
       })
       .subscribe(async (status) => {
         if (status === 'SUBSCRIBED') {
@@ -188,6 +195,9 @@ export function use_zone_utils({
       text,
       ts: Date.now()
     };
+    
+    // Add message to local state immediately so sender sees their own message
+    set_messages((prev) => [...prev.slice(-99), payload]);
     
     // Broadcast to the current zone channel (Supabase real-time, no table needed)
     await channel.send({

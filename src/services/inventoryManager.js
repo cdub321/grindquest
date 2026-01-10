@@ -231,6 +231,40 @@ export function add_item_to_inventory(slots, item, qty = 1, context = {}) {
         return next
       }
 
+      // Try to stack in existing bag stacks before creating new top-level stacks
+      for (let i = CARRY_START; i < slotOrder.length && remaining_qty > 0; i += 1) {
+        const bag = next[i]
+        if (!bag || !bag.bag_slots) continue
+
+        // Ensure contents array exists
+        const contents = Array.isArray(bag.contents) && bag.contents.length === bag.bag_slots
+          ? bag.contents
+          : Array(bag.bag_slots).fill(null)
+
+        // Check for existing stacks of the same item
+        for (let bag_idx = 0; bag_idx < contents.length && remaining_qty > 0; bag_idx += 1) {
+          const bag_item = contents[bag_idx]
+          if (bag_item && bag_item.base_item_id === item.base_item_id) {
+            const current_qty = bag_item.quantity ?? 1
+            const max_stack = bag_item.max_stack ?? item.max_stack ?? 1
+            const can_add = Math.min(remaining_qty, max_stack - current_qty)
+
+            if (can_add > 0) {
+              const updated_contents = [...contents]
+              updated_contents[bag_idx] = { ...bag_item, quantity: current_qty + can_add }
+              next[i] = { ...bag, contents: updated_contents }
+              remaining_qty -= can_add
+            }
+          }
+        }
+      }
+
+      // If we've added everything, we're done
+      if (remaining_qty === 0) {
+        schedule_save({ inventory: true }, save_immediate ? { immediate: true } : {})
+        return next
+      }
+
       // Otherwise, create new stacks in empty inventory slots
       while (remaining_qty > 0) {
         const empty_idx = next.findIndex((s, idx) => idx >= CARRY_START && idx < slotOrder.length && !s)
@@ -250,33 +284,6 @@ export function add_item_to_inventory(slots, item, qty = 1, context = {}) {
       }
 
       if (remaining_qty > 0) {
-        // Try to stack in existing bag stacks first
-        for (let i = CARRY_START; i < slotOrder.length && remaining_qty > 0; i += 1) {
-          const bag = next[i]
-          if (!bag || !bag.bag_slots) continue
-
-          // Ensure contents array exists
-          const contents = Array.isArray(bag.contents) && bag.contents.length === bag.bag_slots
-            ? bag.contents
-            : Array(bag.bag_slots).fill(null)
-
-          // Check for existing stacks of the same item
-          for (let bag_idx = 0; bag_idx < contents.length && remaining_qty > 0; bag_idx += 1) {
-            const bag_item = contents[bag_idx]
-            if (bag_item && bag_item.base_item_id === item.base_item_id) {
-              const current_qty = bag_item.quantity ?? 1
-              const max_stack = bag_item.max_stack ?? item.max_stack ?? 1
-              const can_add = Math.min(remaining_qty, max_stack - current_qty)
-
-              if (can_add > 0) {
-                const updated_contents = [...contents]
-                updated_contents[bag_idx] = { ...bag_item, quantity: current_qty + can_add }
-                next[i] = { ...bag, contents: updated_contents }
-                remaining_qty -= can_add
-              }
-            }
-          }
-        }
 
         // If still remaining, try to create new stacks inside bags
         if (remaining_qty > 0) {

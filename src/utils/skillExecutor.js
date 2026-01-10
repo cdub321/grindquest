@@ -84,17 +84,7 @@ export function execute_skill({
           }
 
           if (add_combat_log) {
-            if (base_damage !== undefined && cha_mod !== undefined && resist !== undefined) {
-              const damage_after_cha = Math.floor(base_damage * cha_mod)
-              const resist_reduction = damage_after_cha - amount
-              add_combat_log(
-                `${skill.name} hits ${current_mob.name} for ${amount} ${school} damage! ` +
-                `[Base: ${base_damage} + CHA+${Math.floor((cha_mod - 1) * 100)}%: ${damage_after_cha} + Resist-${resist}%: -${resist_reduction} = ${amount}]`,
-                'damage'
-              )
-            } else {
-              add_combat_log(`${skill.name} hits ${current_mob.name} for ${amount} ${school} damage!`, 'damage')
-            }
+            add_combat_log(`${skill.name} hits ${current_mob.name} for ${amount} ${school} damage!`, 'damage')
           }
 
           set_mob_hp((prev) => {

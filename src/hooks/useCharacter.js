@@ -289,41 +289,8 @@ export function use_character(character_data, player_class = null, get_stat_modi
     set_level(next_level)
     set_xp(next_xp)
     
-    // Learn new spells for each level gained
-    const learned_spells = []
-    try {
-      for (const gained_level of levels_gained) {
-        const learnable_spells = await fetch_spells_learnable_at_level(character_data.class_id, gained_level)
-        
-        for (const spell of learnable_spells) {
-          try {
-            await learn_spell(character_data.id, spell.id)
-            learned_spells.push(spell)
-            if (add_log) {
-              add_log(`You have learned: ${spell.name || `Spell ${spell.id}`}!`, 'spell')
-            }
-          } catch (err) {
-            // Spell already learned, skip
-            if (err.code !== '23505') {
-              console.error(`Failed to learn spell ${spell.id}:`, err)
-            }
-          }
-        }
-      }
-    } catch (err) {
-      console.error('Error learning spells on level up:', err)
-      if (add_log) {
-        add_log('Failed to learn new spells.', 'error')
-      }
-    }
-    
-    // Notify parent of learned spells
-    if (learned_spells.length > 0 && on_spells_learned) {
-      on_spells_learned(learned_spells)
-    }
-    
-    // Save immediately
-    schedule_save({
+    // Save level to database FIRST so RPC can verify it
+    await schedule_save({
       character: {
         level: next_level,
         xp: next_xp,
@@ -340,6 +307,37 @@ export function use_character(character_data, player_class = null, get_stat_modi
         currency
       }
     }, { immediate: true })
+    
+    // Learn new spells for the level just achieved (same logic as character creation)
+    const learned_spells = []
+    try {
+      const learnable_spells = await fetch_spells_learnable_at_level(character_data.class_id, next_level)
+      if (Array.isArray(learnable_spells) && learnable_spells.length > 0) {
+        await Promise.all(
+          learnable_spells.map(async (spell) => {
+            try {
+              await learn_spell(character_data.id, spell.id)
+              learned_spells.push(spell)
+              if (add_log) {
+                add_log(`You have learned: ${spell.name || `Spell ${spell.id}`}!`, 'spell')
+              }
+            } catch (err) {
+              // Ignore duplicate errors
+              if (err?.code !== '23505') {
+                console.error(`Failed to learn spell ${spell.id}:`, err)
+              }
+            }
+          })
+        )
+      }
+    } catch (err) {
+      console.error('Error learning spells on level up:', err)
+    }
+    
+    // Notify parent of learned spells
+    if (learned_spells.length > 0 && on_spells_learned) {
+      on_spells_learned(learned_spells)
+    }
   }, [xp, level, player_class, character_data, str_base, sta_base, agi_base, dex_base, int_base, wis_base, cha_base, base_hp, base_mana, base_endurance, currency, schedule_save, add_log, on_spells_learned])
   
   // Check for level up when XP changes
