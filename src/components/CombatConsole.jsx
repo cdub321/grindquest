@@ -27,6 +27,7 @@ export default function CombatConsole({
   on_clear_ability = () => {},
   on_clear_spell = () => {},
   on_use_skill,
+  slot_save_status = 'idle',
   cooldowns = {},
   now = Date.now(),
   combat_log = [],
@@ -140,6 +141,7 @@ export default function CombatConsole({
     const remaining = until > now ? Math.ceil((until - now) / 1000) : 0;
     const is_ready = remaining === 0;
     const effect_icon = get_effect_icon(skill);
+    const is_mechanic = is_mechanic_skill(skill);
     return (
       <div
         key={`slot-${is_spell ? 'spell' : 'ability'}-${slot_idx}`}
@@ -150,19 +152,19 @@ export default function CombatConsole({
           gap: '4px',
           padding: '4px 6px',
           marginBottom: '2px',
-          background: 'rgba(0, 0, 0, 0.2)',
-          border: '1px solid rgba(255, 255, 255, 0.08)',
+          background: is_mechanic ? 'rgba(7, 44, 37, 0.7)' : 'rgba(0, 0, 0, 0.2)',
+          border: is_mechanic ? '1px solid rgba(107, 208, 180, 0.7)' : '1px solid rgba(255, 255, 255, 0.08)',
           borderRadius: '6px'
         }}
         >
-          <div style={{ fontSize: '11px', color: '#d6c18a' }}>{is_spell ? 'Spell' : 'Skill'} {slot_idx}</div>
+          <div style={{ fontSize: '11px', color: is_mechanic ? '#a7f3d0' : '#d6c18a' }}>{is_spell ? 'Spell' : 'Skill'} {slot_idx}</div>
           <div style={{ width: 28, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             {skill && typeof effect_icon === 'number' ? (
             <Icon index={effect_icon} size={24} cols={6} sheet="/stone-ui/spellicons/spells1.png" />
           ) : null}
           </div>
         <select
-          value={skill?.id || ''}
+          value={skill?.id || skill?.spell_id || ''}
           onChange={(e) => onChange(slot_idx, e.target.value)}
           style={{
             width: '100%',
@@ -179,7 +181,7 @@ export default function CombatConsole({
           ))}
         </select>
         <div style={{ fontSize: '11px', color: '#c2b59b', textAlign: 'center' }}>
-          {skill ? (is_ready ? 'Ready' : `${remaining}s`) : ''}
+          {skill ? (is_mechanic ? 'Mechanic' : (is_ready ? 'Ready' : `${remaining}s`)) : ''}
         </div>
         <button
           className="btn warn"
@@ -195,12 +197,25 @@ export default function CombatConsole({
 
   const ability_options = [
     { id: 'mechanic-auto-attack', name: 'Auto Attack' },
-    ...(known_abilities || []).map((a) => ({ id: a.id, name: a.name }))
+    ...(known_abilities || []).map((a) => ({ id: a.id || a.spell_id, name: a.name }))
   ];
   const spell_options = [
     { id: 'mechanic-auto-cast', name: 'Auto Cast' },
-    ...(known_spells || []).map((s) => ({ id: s.id, name: s.name }))
+    ...(known_spells || []).map((s) => ({ id: s.id || s.spell_id, name: s.name }))
   ];
+  const is_mechanic_skill = (skill) => skill?.id === 'mechanic-auto-cast' || skill?.id === 'mechanic-auto-attack';
+  const slot_save_label = slot_save_status === 'saving'
+    ? 'Saving...'
+    : slot_save_status === 'saved'
+      ? 'Saved'
+      : slot_save_status === 'error'
+        ? 'Save failed'
+        : '';
+  const slot_save_color = slot_save_status === 'saving'
+    ? '#d6c18a'
+    : slot_save_status === 'saved'
+      ? '#93c5a1'
+      : '#f0a3a3';
 
   const total_spell_slots = [...spell_slots];
   while (total_spell_slots.length < 6) total_spell_slots.push(null);
@@ -795,6 +810,10 @@ export default function CombatConsole({
             style={{ maxWidth: 720, width: '90%', maxHeight: '80vh', overflowY: 'auto' }}
             onClick={(e) => e.stopPropagation()}
           >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+              <div style={{ fontSize: '12px', color: '#d6c18a' }}>Configure Skills and Spells</div>
+              <div style={{ fontSize: '12px', color: slot_save_color, minHeight: '16px' }}>{slot_save_label}</div>
+            </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
               <div>
                 {total_spell_slots.map((skill, idx) =>

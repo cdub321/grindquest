@@ -71,9 +71,13 @@ export function use_skill_slots({
   const [auto_cast_slot_state, set_auto_cast_slot_state] = useState(auto_cast_slot || null);
   const [auto_attack_slot_state, set_auto_attack_slot_state] = useState(auto_attack_slot || null);
   const [is_auto_cast_enabled, set_is_auto_cast_enabled] = useState(false);
+  const [slot_save_status, set_slot_save_status] = useState('idle');
   const cast_timer_ref = useRef(null);
   const ability_auto_timer_ref = useRef(null);
   const spell_auto_timer_ref = useRef(null);
+  const slot_save_request_ref = useRef(0);
+  const slot_save_status_timer_ref = useRef(null);
+  const slot_save_watchdog_ref = useRef(null);
 
   useEffect(() => {
     set_auto_cast_slot_state(auto_cast_slot ?? null);
@@ -93,6 +97,12 @@ export function use_skill_slots({
       }
       if (spell_auto_timer_ref.current) {
         clearInterval(spell_auto_timer_ref.current);
+      }
+      if (slot_save_status_timer_ref.current) {
+        clearTimeout(slot_save_status_timer_ref.current);
+      }
+      if (slot_save_watchdog_ref.current) {
+        clearTimeout(slot_save_watchdog_ref.current);
       }
     };
   }, []);
@@ -129,6 +139,10 @@ export function use_skill_slots({
     return slots;
   }, [known_spells, auto_cast_slot_state]);
 
+  const clone_known_spells = useCallback((spells = []) => (
+    (Array.isArray(spells) ? spells : []).map((spell) => ({ ...spell }))
+  ), []);
+
   const persist_slots = useCallback(async (next_known = [], auto_attack_slot_state_val = auto_attack_slot_state, auto_cast_slot_state_val = auto_cast_slot_state) => {
     if (!character_id) return;
     const ability_payload = [];
@@ -149,16 +163,103 @@ export function use_skill_slots({
     });
 
     try {
-      await save_spell_slots(character_id, {
-        ability_slots: ability_payload,
-        spell_slots: spell_payload,
-        auto_attack_slot: auto_attack_slot_state_val || null,
-        auto_cast_slot: auto_cast_slot_state_val || null
-      });
+      const save_promises = [
+        save_spell_slots(character_id, {
+          ability_slots: ability_payload,
+          spell_slots: spell_payload
+        })
+      ];
+
+      if (schedule_save) {
+        save_promises.push(
+          schedule_save({
+            character: {
+              auto_attack_slot: auto_attack_slot_state_val || null,
+              auto_cast_slot: auto_cast_slot_state_val || null
+            }
+          }, { immediate: true })
+        );
+      } else {
+        save_promises.push(
+          save_spell_slots(character_id, {
+            auto_attack_slot: auto_attack_slot_state_val || null,
+            auto_cast_slot: auto_cast_slot_state_val || null
+          })
+        );
+      }
+
+      await Promise.all(save_promises);
+      return true;
     } catch (err) {
       console.error('Failed to save spell slots', err);
+      if (add_log) {
+        add_log('Failed to save skills and spells.', 'error');
+      }
+      return false;
     }
-  }, [character_id, auto_attack_slot_state, auto_cast_slot_state]);
+  }, [character_id, auto_attack_slot_state, auto_cast_slot_state, add_log, schedule_save]);
+
+  const commit_slot_update = useCallback(({
+    next_known,
+    next_auto_attack_slot = auto_attack_slot_state,
+    next_auto_cast_slot = auto_cast_slot_state,
+    previous_known = known_spells,
+    previous_auto_attack_slot = auto_attack_slot_state,
+    previous_auto_cast_slot = auto_cast_slot_state
+  }) => {
+    set_known_spells(next_known);
+    set_auto_attack_slot_state(next_auto_attack_slot);
+    set_auto_cast_slot_state(next_auto_cast_slot);
+    set_slot_save_status('saving');
+    if (slot_save_status_timer_ref.current) {
+      clearTimeout(slot_save_status_timer_ref.current);
+      slot_save_status_timer_ref.current = null;
+    }
+    if (slot_save_watchdog_ref.current) {
+      clearTimeout(slot_save_watchdog_ref.current);
+      slot_save_watchdog_ref.current = null;
+    }
+
+    const request_id = ++slot_save_request_ref.current;
+    slot_save_watchdog_ref.current = setTimeout(() => {
+      if (request_id !== slot_save_request_ref.current) return;
+      set_slot_save_status('saved');
+      slot_save_status_timer_ref.current = setTimeout(() => {
+        set_slot_save_status('idle');
+        slot_save_status_timer_ref.current = null;
+      }, 1500);
+      slot_save_watchdog_ref.current = null;
+    }, 2500);
+
+    void persist_slots(next_known, next_auto_attack_slot, next_auto_cast_slot).then((saved) => {
+      if (request_id !== slot_save_request_ref.current) {
+        return;
+      }
+      if (slot_save_watchdog_ref.current) {
+        clearTimeout(slot_save_watchdog_ref.current);
+        slot_save_watchdog_ref.current = null;
+      }
+      if (saved) {
+        set_slot_save_status('saved');
+        slot_save_status_timer_ref.current = setTimeout(() => {
+          set_slot_save_status('idle');
+          slot_save_status_timer_ref.current = null;
+        }, 1500);
+        return;
+      }
+
+      set_known_spells(previous_known);
+      set_auto_attack_slot_state(previous_auto_attack_slot);
+      set_auto_cast_slot_state(previous_auto_cast_slot);
+      set_slot_save_status('error');
+    });
+  }, [
+    auto_attack_slot_state,
+    auto_cast_slot_state,
+    known_spells,
+    persist_slots,
+    set_known_spells
+  ]);
 
   const apply_cooldown = useCallback((skill_id, recast_time = 0) => {
     if (!skill_id || !set_cooldowns) return;
@@ -180,32 +281,36 @@ export function use_skill_slots({
 
   const assign_ability_to_slot = useCallback((slot_idx, spell_id_or_mechanic) => {
     if (slot_idx < 1 || slot_idx > ABILITY_SLOT_COUNT) return;
+    const previous_known = clone_known_spells(known_spells);
+    const previous_auto_attack_slot = auto_attack_slot_state;
+    const previous_auto_cast_slot = auto_cast_slot_state;
 
     if (spell_id_or_mechanic === mechanic_auto_attack.id) {
-      set_auto_attack_slot_state(slot_idx);
-      if (schedule_save) {
-        schedule_save({ character: { auto_attack_slot: slot_idx } });
-      }
-      // Persist slots including auto slots
-      persist_slots(known_spells, slot_idx, auto_cast_slot_state);
+      const next = clone_known_spells(known_spells);
+      next.forEach((spell) => {
+        if (spell.ability_slot === slot_idx) {
+          spell.ability_slot = null;
+        }
+      });
+      commit_slot_update({
+        next_known: next,
+        next_auto_attack_slot: slot_idx,
+        next_auto_cast_slot: auto_cast_slot_state,
+        previous_known,
+        previous_auto_attack_slot,
+        previous_auto_cast_slot
+      });
       return;
     }
 
-    set_auto_attack_slot_state((prev) => {
-      if (prev === slot_idx) {
-        if (schedule_save) schedule_save({ character: { auto_attack_slot: null } });
-        return null;
-      }
-      return prev;
-    });
+    const next_auto_attack_slot = auto_attack_slot_state === slot_idx ? null : auto_attack_slot_state;
 
     const resolved_id = spell_id_or_mechanic === null || spell_id_or_mechanic === undefined
       ? null
       : (isNaN(Number(spell_id_or_mechanic)) ? spell_id_or_mechanic : Number(spell_id_or_mechanic));
     if (!resolved_id) return;
 
-    const current = Array.isArray(known_spells) ? known_spells : [];
-    const next = current.map((s) => ({ ...s }));
+    const next = clone_known_spells(known_spells);
 
     next.forEach((s) => {
       if (s.ability_slot === slot_idx) s.ability_slot = null;
@@ -221,54 +326,68 @@ export function use_skill_slots({
       target.spell_slot = null;
     }
 
-    set_known_spells(next);
-    persist_slots(next, auto_attack_slot_state, auto_cast_slot_state);
-  }, [known_spells, persist_slots, schedule_save, set_known_spells]);
+    commit_slot_update({
+      next_known: next,
+      next_auto_attack_slot,
+      next_auto_cast_slot: auto_cast_slot_state,
+      previous_known,
+      previous_auto_attack_slot,
+      previous_auto_cast_slot
+    });
+  }, [auto_attack_slot_state, auto_cast_slot_state, clone_known_spells, commit_slot_update, known_spells]);
 
   const clear_ability_slot = useCallback((slot_idx) => {
     if (slot_idx < 1 || slot_idx > ABILITY_SLOT_COUNT) return;
-
-    if (auto_attack_slot_state === slot_idx) {
-      set_auto_attack_slot_state(null);
-      if (schedule_save) schedule_save({ character: { auto_attack_slot: null } });
-    }
-
-    const current = Array.isArray(known_spells) ? known_spells : [];
-    const next = current.map((s) => ({ ...s }));
+    const previous_known = clone_known_spells(known_spells);
+    const previous_auto_attack_slot = auto_attack_slot_state;
+    const previous_auto_cast_slot = auto_cast_slot_state;
+    const next_auto_attack_slot = auto_attack_slot_state === slot_idx ? null : auto_attack_slot_state;
+    const next = clone_known_spells(known_spells);
     next.forEach((s) => {
       if (s.ability_slot === slot_idx) s.ability_slot = null;
     });
-    set_known_spells(next);
-    persist_slots(next, auto_attack_slot_state, auto_cast_slot_state);
-  }, [auto_attack_slot_state, known_spells, persist_slots, schedule_save, set_known_spells]);
+    commit_slot_update({
+      next_known: next,
+      next_auto_attack_slot,
+      next_auto_cast_slot: auto_cast_slot_state,
+      previous_known,
+      previous_auto_attack_slot,
+      previous_auto_cast_slot
+    });
+  }, [auto_attack_slot_state, auto_cast_slot_state, clone_known_spells, commit_slot_update, known_spells]);
 
   const assign_spell_to_slot = useCallback((slot_idx, spell_id_or_mechanic) => {
     if (slot_idx < 1 || slot_idx > SPELL_SLOT_COUNT) return;
+    const previous_known = clone_known_spells(known_spells);
+    const previous_auto_attack_slot = auto_attack_slot_state;
+    const previous_auto_cast_slot = auto_cast_slot_state;
 
     if (spell_id_or_mechanic === mechanic_auto_cast.id) {
-      set_auto_cast_slot_state(slot_idx);
-      if (schedule_save) {
-        schedule_save({ character: { auto_cast_slot: slot_idx } });
-      }
-      persist_slots(known_spells, auto_attack_slot_state, slot_idx);
+      const next = clone_known_spells(known_spells);
+      next.forEach((spell) => {
+        if (spell.spell_slot === slot_idx && spell.skill_type !== 'ability') {
+          spell.spell_slot = null;
+        }
+      });
+      commit_slot_update({
+        next_known: next,
+        next_auto_attack_slot: auto_attack_slot_state,
+        next_auto_cast_slot: slot_idx,
+        previous_known,
+        previous_auto_attack_slot,
+        previous_auto_cast_slot
+      });
       return;
     }
 
-    set_auto_cast_slot_state((prev) => {
-      if (prev === slot_idx) {
-        if (schedule_save) schedule_save({ character: { auto_cast_slot: null } });
-        return null;
-      }
-      return prev;
-    });
+    const next_auto_cast_slot = auto_cast_slot_state === slot_idx ? null : auto_cast_slot_state;
 
     const resolved_id = spell_id_or_mechanic === null || spell_id_or_mechanic === undefined
       ? null
       : (isNaN(Number(spell_id_or_mechanic)) ? spell_id_or_mechanic : Number(spell_id_or_mechanic));
     if (!resolved_id) return;
 
-    const current = Array.isArray(known_spells) ? known_spells : [];
-    const next = current.map((s) => ({ ...s }));
+    const next = clone_known_spells(known_spells);
 
     next.forEach((s) => {
       if (s.spell_slot === slot_idx && s.skill_type !== 'ability') s.spell_slot = null;
@@ -284,26 +403,35 @@ export function use_skill_slots({
       target.ability_slot = null;
     }
 
-    set_known_spells(next);
-    persist_slots(next, auto_attack_slot_state, auto_cast_slot_state);
-  }, [known_spells, persist_slots, schedule_save, set_known_spells]);
+    commit_slot_update({
+      next_known: next,
+      next_auto_attack_slot: auto_attack_slot_state,
+      next_auto_cast_slot,
+      previous_known,
+      previous_auto_attack_slot,
+      previous_auto_cast_slot
+    });
+  }, [auto_attack_slot_state, auto_cast_slot_state, clone_known_spells, commit_slot_update, known_spells]);
 
   const clear_spell_slot = useCallback((slot_idx) => {
     if (slot_idx < 1 || slot_idx > SPELL_SLOT_COUNT) return;
-
-    if (auto_cast_slot_state === slot_idx) {
-      set_auto_cast_slot_state(null);
-      if (schedule_save) schedule_save({ character: { auto_cast_slot: null } });
-    }
-
-    const current = Array.isArray(known_spells) ? known_spells : [];
-    const next = current.map((s) => ({ ...s }));
+    const previous_known = clone_known_spells(known_spells);
+    const previous_auto_attack_slot = auto_attack_slot_state;
+    const previous_auto_cast_slot = auto_cast_slot_state;
+    const next_auto_cast_slot = auto_cast_slot_state === slot_idx ? null : auto_cast_slot_state;
+    const next = clone_known_spells(known_spells);
     next.forEach((s) => {
       if (s.spell_slot === slot_idx && s.skill_type !== 'ability') s.spell_slot = null;
     });
-    set_known_spells(next);
-    persist_slots(next, auto_attack_slot_state, auto_cast_slot_state);
-  }, [auto_cast_slot_state, known_spells, persist_slots, schedule_save, set_known_spells]);
+    commit_slot_update({
+      next_known: next,
+      next_auto_attack_slot: auto_attack_slot_state,
+      next_auto_cast_slot,
+      previous_known,
+      previous_auto_attack_slot,
+      previous_auto_cast_slot
+    });
+  }, [auto_attack_slot_state, auto_cast_slot_state, clone_known_spells, commit_slot_update, known_spells]);
 
   const handle_builtin = useCallback((skill_id) => {
     switch (skill_id) {
@@ -597,6 +725,7 @@ export function use_skill_slots({
   return {
     ability_slots,
     spell_slots,
+    slot_save_status,
     assign_ability_to_slot,
     assign_spell_to_slot,
     clear_ability_slot,

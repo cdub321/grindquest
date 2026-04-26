@@ -44,6 +44,8 @@ export default function SpellBook({
     on_assign_spell(slotIdx, val);
   };
 
+  const isMechanicSkill = (skill) => skill?.id === 'mechanic-auto-cast' || skill?.id === 'mechanic-auto-attack';
+
   const renderConfigRow = (slotIdx, skill, getOptions, onChange, onClear, isSpell = false) => {
     const options = getOptions(slotIdx);
     const skillId = typeof skill === 'string' ? skill : (skill?.id || skill?.spell_id);
@@ -51,6 +53,7 @@ export default function SpellBook({
     const remaining = until > now ? Math.ceil((until - now) / 1000) : 0;
     const isReady = remaining === 0;
     const effectIcon = getEffectIcon(skill);
+    const isMechanic = isMechanicSkill(skill);
     return (
       <div
         key={`slot-${isSpell ? 'spell' : 'ability'}-${slotIdx}`}
@@ -61,12 +64,12 @@ export default function SpellBook({
           gap: '4px',
           padding: '4px 6px',
           marginBottom: '2px',
-          background: 'rgba(0, 0, 0, 0.2)',
-          border: '1px solid rgba(255, 255, 255, 0.08)',
+          background: isMechanic ? 'rgba(7, 44, 37, 0.7)' : 'rgba(0, 0, 0, 0.2)',
+          border: isMechanic ? '1px solid rgba(107, 208, 180, 0.7)' : '1px solid rgba(255, 255, 255, 0.08)',
           borderRadius: '6px'
         }}
       >
-        <div style={{ fontSize: '11px', color: '#d6c18a' }}>{isSpell ? 'Spell' : 'Ability'} {slotIdx}</div>
+        <div style={{ fontSize: '11px', color: isMechanic ? '#a7f3d0' : '#d6c18a' }}>{isSpell ? 'Spell' : 'Ability'} {slotIdx}</div>
         <div style={{ width: 28, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           {skill && typeof effectIcon === 'number' ? (
             <Icon index={effectIcon} size={24} cols={6} sheet="/stone-ui/spellicons/spells1.png" />
@@ -90,7 +93,7 @@ export default function SpellBook({
           ))}
         </select>
         <div style={{ fontSize: '11px', color: '#c2b59b', textAlign: 'center' }}>
-          {skill ? (isReady ? 'Ready' : `${remaining}s`) : ''}
+          {skill ? (isMechanic ? 'Mechanic' : (isReady ? 'Ready' : `${remaining}s`)) : ''}
         </div>
         <button
           className="btn warn"

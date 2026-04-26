@@ -53,17 +53,19 @@ function GameScreen({ onSignOut }) {
     }
   }, [character_data?.current_camp_id])
   
-  // Local known_spells state (can be updated when spells are learned)
-  const [known_spells_state, set_known_spells_state] = useState([])
+  // Local known_spells state (null until initial character spell data is hydrated)
+  const [known_spells_state, set_known_spells_state] = useState(null)
   // Local cooldown state (keeps UI in sync immediately)
   const [cooldowns_state, set_cooldowns_state] = useState(character_data?.cooldowns ?? {})
   
-  // Update known_spells_state when character_data loads
+  // Update known_spells_state when character_data loads or the active character changes
   useEffect(() => {
-    if (character_data?.known_spells) {
-      set_known_spells_state(character_data.known_spells)
+    if (!character_data) {
+      set_known_spells_state(null)
+      return
     }
-  }, [character_data?.known_spells])
+    set_known_spells_state(character_data.known_spells ?? [])
+  }, [character_data?.id, character_data?.known_spells])
   // Sync cooldowns when character_data changes (e.g., on reload)
   useEffect(() => {
     set_cooldowns_state(character_data?.cooldowns ?? {})
@@ -626,7 +628,7 @@ function GameScreen({ onSignOut }) {
   // Initialize useSkillSlots hook
   const skill_slots_hook = use_skill_slots({
     character_id: character_data?.id,
-    known_spells: known_spells_state.length > 0 ? known_spells_state : (character_data?.known_spells ?? []),
+    known_spells: known_spells_state ?? [],
     set_known_spells: (spells) => {
       set_known_spells_state(spells);
     },
@@ -809,7 +811,7 @@ function GameScreen({ onSignOut }) {
   const inventory_preview = (inventory_hook.current_slots || []).slice(0, CARRY_START + 8)
   
   // Split known spells into spells and abilities
-  const current_known_spells = known_spells_state.length > 0 ? known_spells_state : (character_data?.known_spells ?? [])
+  const current_known_spells = known_spells_state ?? []
   const known_spells = current_known_spells.filter(s => s.skill_type === 'spell' || !s.skill_type)
   const known_abilities = current_known_spells.filter(s => s.skill_type === 'ability')
   
@@ -889,6 +891,7 @@ function GameScreen({ onSignOut }) {
             on_clear_ability={skill_slots_hook.clear_ability_slot}
             on_clear_spell={skill_slots_hook.clear_spell_slot}
             on_use_skill={skill_slots_hook.use_skill}
+            slot_save_status={skill_slots_hook.slot_save_status}
             cooldowns={cooldowns_state}
             now={Date.now()}
             combat_log={combat_log}

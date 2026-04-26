@@ -377,7 +377,7 @@ export async function learn_spell(character_id, spell_id) {
  * @param {Array} spell_slots - Array of { spell_id, spell_slot } (1-based slots, null to clear)
  * @returns {Promise<void>}
  */
-export async function save_spell_slots(character_id, { ability_slots = [], spell_slots = [], auto_attack_slot = null, auto_cast_slot = null }) {
+export async function save_spell_slots(character_id, { ability_slots = [], spell_slots = [], auto_attack_slot, auto_cast_slot } = {}) {
   try {
     // Upsert ability slots (including clears)
     const ability_payload = (ability_slots || []).filter(
@@ -428,11 +428,11 @@ export async function save_spell_slots(character_id, { ability_slots = [], spell
       }
     }
 
-    // Persist auto slots on character
-    if (auto_attack_slot !== null || auto_cast_slot !== null) {
+    // Persist auto slots on character, including explicit clears.
+    if (auto_attack_slot !== undefined || auto_cast_slot !== undefined) {
       const character_update = {}
-      if (auto_attack_slot !== null) character_update.auto_attack_slot = auto_attack_slot
-      if (auto_cast_slot !== null) character_update.auto_cast_slot = auto_cast_slot
+      if (auto_attack_slot !== undefined) character_update.auto_attack_slot = auto_attack_slot
+      if (auto_cast_slot !== undefined) character_update.auto_cast_slot = auto_cast_slot
       const { error } = await supabase
         .from('characters')
         .update(character_update)
